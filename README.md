@@ -43,6 +43,14 @@ proxy). `proxy` is rejected for HTTP landings.
 Proxy wins when the same value appears in both explicit actions. Domain rules
 are also installed as dnsmasq nft sets, so they do not depend on TLS sniffing.
 
+## LuCI configuration
+
+The package installs a native LuCI form at **Services > HY2Route**. It exposes
+the service policy, HY2 relay, SOCKS/HTTP landing, advanced ports and an
+add/remove/sort table for explicit IP, CIDR and domain routing rules. Password
+fields are masked in the browser. Saving and applying the form commits the UCI
+configuration and triggers a service reload.
+
 ## Build
 
 Copy this directory into `package/hy2route` in an OpenWrt 23.05 SDK matching the

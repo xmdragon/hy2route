@@ -1,0 +1,13 @@
+{
+	"admin/services/hy2route": {
+		"title": "HY2Route",
+		"order": 45,
+		"action": {
+			"type": "view",
+			"path": "hy2route/main"
+		},
+		"depends": {
+			"acl": [ "luci-app-hy2route" ]
+		}
+	}
+}
