@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hy2route
 PKG_VERSION:=0.1.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=MIT
 PKGARCH:=all
 
@@ -22,6 +22,18 @@ endef
 
 define Package/hy2route/conffiles
 /etc/config/hy2route
+endef
+
+define Package/hy2route/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+chown root:root /etc/config/hy2route /etc/init.d/hy2route \
+	/usr/bin/hy2route /usr/libexec/hy2route/generate.uc \
+	/usr/share/hy2route/china4.nft
+chmod 600 /etc/config/hy2route
+chmod 755 /etc/init.d/hy2route /usr/bin/hy2route \
+	/usr/libexec/hy2route/generate.uc
+chmod 644 /usr/share/hy2route/china4.nft
 endef
 
 define Build/Compile

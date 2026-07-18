@@ -144,6 +144,7 @@ function make_landing() {
 
 	let username = text(landing.username, '');
 	let password = text(landing.password, '');
+	server.password = password;
 	if (username != '' || password != '')
 		server.users = [ { user: username, pass: password } ];
 
