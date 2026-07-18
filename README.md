@@ -49,6 +49,9 @@ python3 tools/update_china4.py
 make package/hy2route/compile V=s
 ```
 
+GitHub Actions also builds the package with the verified OpenWrt 23.05.0
+`mediatek/filogic` SDK and publishes the `.ipk` as a workflow artifact.
+
 The target router used during development is `mediatek/filogic`, ARM64,
 OpenWrt 23.05.0.
 
