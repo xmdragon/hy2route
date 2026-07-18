@@ -36,7 +36,7 @@ jobs:
           mkdir sdk
           tar --extract --xz --file "$SDK_ARCHIVE" --directory sdk --strip-components=1
 
-      - name: Add package and feeds
+      - name: Add package
         run: |
           mkdir -p sdk/package/hy2route
           rsync --archive \
@@ -47,8 +47,6 @@ jobs:
             --exclude "$SDK_ARCHIVE" \
             ./ sdk/package/hy2route/
           cd sdk
-          ./scripts/feeds update -a
-          ./scripts/feeds install xray-core
           make defconfig
 
       - name: Build hy2route
