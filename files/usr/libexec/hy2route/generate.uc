@@ -91,6 +91,9 @@ const bootstrap_dns = text(main.bootstrap_dns, '192.168.1.1');
 const fwmark = number(main.fwmark, 102, 1, 2147483647, 'fwmark');
 const log_level = text(main.log_level, 'warning');
 const udp_policy = text(main.udp_policy, 'proxy');
+const block_ipv6 = boolean(main.block_ipv6, true);
+const congestion = text(relay.congestion, 'bbr');
+const bbr_profile = text(relay.bbr_profile, 'standard');
 
 if (!valid_host(relay_server) || !valid_host(landing_server))
 	fail('relay and landing server values may contain only letters, digits, dot, colon, underscore and dash');
@@ -100,6 +103,10 @@ if (landing_type != 'socks' && landing_type != 'http')
 	fail("landing type must be 'socks' or 'http'");
 if (udp_policy != 'proxy' && udp_policy != 'block' && udp_policy != 'direct')
 	fail("udp_policy must be 'proxy', 'block' or 'direct'");
+if (congestion != 'bbr' && congestion != 'reno')
+	fail("congestion must be 'bbr' or 'reno'");
+if (bbr_profile != 'conservative' && bbr_profile != 'standard' && bbr_profile != 'aggressive')
+	fail("bbr_profile must be 'conservative', 'standard' or 'aggressive'");
 if (landing_type == 'http' && udp_policy == 'proxy')
 	fail("HTTP landing cannot carry UDP; set udp_policy to 'block' or 'direct'");
 if (match(lan_interface, /^[A-Za-z0-9_.:-]+$/) == null)
@@ -184,8 +191,16 @@ function make_relay() {
 			hysteriaSettings: {
 				version: 2,
 				auth: text(relay.auth, ''),
-				maxIdleTimeout: number(relay.max_idle_timeout, 30, 4, 120, 'max_idle_timeout'),
-				disablePathMTUDiscovery: boolean(relay.disable_mtu_discovery, false)
+				udpIdleTimeout: number(relay.udp_idle_timeout, 60, 2, 600, 'udp_idle_timeout')
+			},
+			finalmask: {
+				quicParams: {
+					congestion: congestion,
+					bbrProfile: bbr_profile,
+					maxIdleTimeout: number(relay.max_idle_timeout, 60, 4, 120, 'max_idle_timeout'),
+					keepAlivePeriod: number(relay.keep_alive_period, 15, 2, 60, 'keep_alive_period'),
+					disablePathMTUDiscovery: boolean(relay.disable_mtu_discovery, false)
+				}
 			}
 		},
 		mux: { enabled: false }
@@ -307,6 +322,12 @@ function emit_nft() {
 	if (length(direct_ips))
 		print('\t\telements = { ' + nft_join(direct_ips) + ' }\n');
 	print('\t}\n');
+	if (block_ipv6) {
+		print('\tchain block_forward_ipv6 {\n');
+		print('\t\ttype filter hook forward priority -1; policy accept;\n');
+		print('\t\tiifname "' + lan_interface + '" meta nfproto ipv6 drop\n');
+		print('\t}\n');
+	}
 
 	print('\tchain prerouting_mangle {\n');
 	print('\t\ttype filter hook prerouting priority mangle; policy accept;\n');

@@ -25,6 +25,17 @@ def main() -> None:
     with urllib.request.urlopen(APNIC_URL, timeout=30) as response:
         rows = response.read().decode("ascii").splitlines()
 
+    snapshot_date = "unknown"
+    for row in rows:
+        fields = row.split("|")
+        if len(fields) >= 3 and fields[:2] == ["2", "apnic"]:
+            raw_date = fields[2]
+            if len(raw_date) == 8 and raw_date.isdigit():
+                snapshot_date = (
+                    f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+                )
+            break
+
     networks: list[ipaddress.IPv4Network] = []
     for row in rows:
         fields = row.split("|")
@@ -38,6 +49,7 @@ def main() -> None:
     collapsed = list(ipaddress.collapse_addresses(networks))
     lines = [
         "# Generated from APNIC delegated-apnic-latest.",
+        f"# APNIC snapshot: {snapshot_date}.",
         "# Do not edit manually.",
         "add element inet hy2route china4 {",
     ]

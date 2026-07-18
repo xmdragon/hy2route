@@ -5,6 +5,9 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
 
 permissions:
   contents: read
@@ -28,6 +31,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes build-essential clang flex bison gawk gettext \
             libncurses-dev libssl-dev python3 rsync unzip zlib1g-dev file wget
+
+      - name: Refresh mainland China IPv4 snapshot
+        run: python3 tools/update_china4.py
 
       - name: Download verified OpenWrt SDK
         run: |

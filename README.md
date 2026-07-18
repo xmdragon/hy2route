@@ -17,9 +17,15 @@ are transparently proxied. Explicit IP and domain rules can force either path.
 - `procd` supervises Xray and restarts it after crashes.
 - The package is disabled by default and refuses to start while Passwall2 is
   running.
-- With a SOCKS5 landing, DNS goes through the chain to avoid polluted direct
-  DNS. HTTP landing mode uses the configured bootstrap DNS directly because
-  an HTTP proxy cannot transport dnsmasq's UDP upstream queries.
+- With a SOCKS5 landing, DNS goes through the HY2 relay but deliberately exits
+  before the landing proxy. This keeps DNS independent of SOCKS5 UDP support.
+  HTTP landing mode uses the configured bootstrap DNS directly because an HTTP
+  proxy cannot transport dnsmasq's UDP upstream queries.
+- LAN IPv6 forwarding is blocked by default so an unproxied IPv6 route cannot
+  bypass the IPv4 policy. Router-local IPv6 services remain reachable.
+- HY2 uses BBR with periodic QUIC keepalives by default. The package raises the
+  UDP socket buffer ceiling to 4 MiB without changing the default allocation
+  for unrelated sockets.
 
 `allow_insecure` is available only for migrating HY2 servers that do not have
 a verifiable certificate. Leave it disabled when possible; a configured
@@ -61,8 +67,10 @@ python3 tools/update_china4.py
 make package/hy2route/compile V=s
 ```
 
-GitHub Actions also builds the package with the verified OpenWrt 23.05.0
-`mediatek/filogic` SDK and publishes the `.ipk` as a workflow artifact.
+GitHub Actions refreshes the APNIC mainland China IPv4 snapshot, builds the
+package with the verified OpenWrt 23.05.0 `mediatek/filogic` SDK and publishes
+the `.ipk` as a workflow artifact. It runs for changes, manual requests and a
+weekly schedule.
 
 The target router used during development is `mediatek/filogic`, ARM64,
 OpenWrt 23.05.0.

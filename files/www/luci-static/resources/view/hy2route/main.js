@@ -97,6 +97,10 @@ return view.extend({
 		o.default = '166';
 		o.rmempty = false;
 
+		o = s.taboption('advanced', form.Flag, 'block_ipv6', _('阻止 IPv6 转发'),
+			_('阻止 LAN 客户端通过未代理的 IPv6 访问外网，不影响路由器本机 IPv6 服务。'));
+		o.default = o.enabled;
+
 		s = m.section(form.NamedSection, 'relay', 'hy2', _('HY2 中转'));
 
 		o = s.option(form.Value, 'server', _('服务器'));
@@ -124,9 +128,33 @@ return view.extend({
 		o.password = true;
 		o.rmempty = true;
 
-		o = s.option(form.Value, 'max_idle_timeout', _('最大空闲时间（秒）'));
+		o = s.option(form.ListValue, 'congestion', _('拥塞控制'));
+		o.value('bbr', _('BBR（稳定）'));
+		o.value('reno', _('Reno（保守）'));
+		o.default = 'bbr';
+		o.rmempty = false;
+
+		o = s.option(form.ListValue, 'bbr_profile', _('BBR 模式'));
+		o.value('conservative', _('保守'));
+		o.value('standard', _('标准'));
+		o.value('aggressive', _('激进'));
+		o.default = 'standard';
+		o.rmempty = false;
+		o.depends('congestion', 'bbr');
+
+		o = s.option(form.Value, 'udp_idle_timeout', _('UDP 空闲时间（秒）'));
+		o.datatype = 'range(2,600)';
+		o.default = '60';
+		o.rmempty = false;
+
+		o = s.option(form.Value, 'max_idle_timeout', _('QUIC 最大空闲时间（秒）'));
 		o.datatype = 'range(4,120)';
-		o.default = '30';
+		o.default = '60';
+		o.rmempty = false;
+
+		o = s.option(form.Value, 'keep_alive_period', _('QUIC 保活间隔（秒）'));
+		o.datatype = 'range(2,60)';
+		o.default = '15';
 		o.rmempty = false;
 
 		o = s.option(form.Flag, 'disable_mtu_discovery', _('禁用路径 MTU 探测'));
