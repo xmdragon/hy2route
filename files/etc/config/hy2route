@@ -1,0 +1,43 @@
+config main 'main'
+	option enabled '0'
+	option lan_interface 'br-lan'
+	option transparent_port '12345'
+	option test_socks_port '10780'
+	option dns_port '1053'
+	option remote_dns '8.8.8.8'
+	option bootstrap_dns '192.168.1.1'
+	option fwmark '102'
+	option route_table '166'
+	option log_level 'warning'
+	option udp_policy 'proxy'
+
+config hy2 'relay'
+	option server 'REPLACE_WITH_RELAY_IP_OR_DOMAIN'
+	option port '443'
+	option auth 'REPLACE_WITH_HY2_PASSWORD'
+	option sni 'REPLACE_WITH_RELAY_SNI'
+	option pinned_cert_sha256 ''
+	option max_idle_timeout '30'
+	option disable_mtu_discovery '0'
+
+config landing 'landing'
+	option type 'socks'
+	option server 'REPLACE_WITH_LANDING_IP_OR_DOMAIN'
+	option port '443'
+	option username 'REPLACE_WITH_USERNAME'
+	option password 'REPLACE_WITH_PASSWORD'
+
+# Proxy rules win if the same IP or domain is present in both actions.
+# Domain values match the domain itself and all of its subdomains.
+#
+# config rule
+#	option enabled '1'
+#	option action 'direct'
+#	option type 'domain'
+#	option value 'example.cn'
+#
+# config rule
+#	option enabled '1'
+#	option action 'proxy'
+#	option type 'ip'
+#	option value '203.0.113.0/24'

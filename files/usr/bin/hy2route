@@ -1,0 +1,40 @@
+#!/bin/sh
+
+GEN=/usr/libexec/hy2route/generate.uc
+RUNDIR=/tmp/hy2route
+
+umask 077
+
+usage() {
+	echo 'usage: hy2route <check|status|test>' >&2
+	exit 2
+}
+
+case "$1" in
+	check)
+		mkdir -p "$RUNDIR"
+		"$GEN" xray > "$RUNDIR/xray.check.json" || exit 1
+		"$GEN" nft > "$RUNDIR/nft.check.conf" || exit 1
+		XRAY_LOCATION_ASSET=/usr/share/v2ray xray run -test -c "$RUNDIR/xray.check.json" || exit 1
+		nft -c -f "$RUNDIR/nft.check.conf" || exit 1
+		echo 'hy2route configuration is valid'
+		;;
+	status)
+		if nft list table inet hy2route >/dev/null 2>&1 && ps w | grep -q '[x]ray run -c /tmp/hy2route/xray.json'; then
+			echo 'hy2route is running'
+		else
+			echo 'hy2route is stopped'
+			exit 1
+		fi
+		;;
+	test)
+		port="$(uci -q get hy2route.main.test_socks_port)"
+		[ -n "$port" ] || port=10780
+		curl -fsS --max-time 15 --socks5-hostname "127.0.0.1:$port" \
+			-o /dev/null -w 'HTTP %{http_code}, connect %{time_connect}s, total %{time_total}s\n' \
+			https://www.gstatic.com/generate_204
+		;;
+	*)
+		usage
+		;;
+esac
