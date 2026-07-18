@@ -181,12 +181,12 @@ function make_relay() {
 			network: 'hysteria',
 			security: 'tls',
 			tlsSettings: tls,
-				hysteriaSettings: {
-					version: 2,
-					auth: text(relay.auth, ''),
-					maxIdleTimeout: number(relay.max_idle_timeout, 30, 4, 120, 'max_idle_timeout'),
-					disablePathMTUDiscovery: boolean(relay.disable_mtu_discovery, false)
-				}
+			hysteriaSettings: {
+				version: 2,
+				auth: text(relay.auth, ''),
+				maxIdleTimeout: number(relay.max_idle_timeout, 30, 4, 120, 'max_idle_timeout'),
+				disablePathMTUDiscovery: boolean(relay.disable_mtu_discovery, false)
+			}
 		},
 		mux: { enabled: false }
 	};
