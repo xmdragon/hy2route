@@ -153,8 +153,7 @@ function make_landing() {
 		protocol: landing_type,
 		settings: { servers: [ server ] },
 		proxySettings: { tag: 'hy2-relay', transportLayer: true },
-		mux: { enabled: false },
-		streamSettings: { sockopt: { mark: fwmark } }
+		mux: { enabled: false }
 	};
 }
 
@@ -182,13 +181,12 @@ function make_relay() {
 			network: 'hysteria',
 			security: 'tls',
 			tlsSettings: tls,
-			hysteriaSettings: {
-				version: 2,
-				auth: text(relay.auth, ''),
-				maxIdleTimeout: number(relay.max_idle_timeout, 30, 4, 120, 'max_idle_timeout'),
-				disablePathMTUDiscovery: boolean(relay.disable_mtu_discovery, false)
-			},
-			sockopt: { mark: fwmark }
+				hysteriaSettings: {
+					version: 2,
+					auth: text(relay.auth, ''),
+					maxIdleTimeout: number(relay.max_idle_timeout, 30, 4, 120, 'max_idle_timeout'),
+					disablePathMTUDiscovery: boolean(relay.disable_mtu_discovery, false)
+				}
 		},
 		mux: { enabled: false }
 	};
@@ -196,7 +194,7 @@ function make_relay() {
 
 function emit_xray() {
 	let route_rules = [
-		{ inboundTag: [ 'dns-proxy' ], outboundTag: 'chain' },
+		{ inboundTag: [ 'dns-proxy' ], outboundTag: 'hy2-relay' },
 		{ ip: [ 'geoip:private' ], outboundTag: 'direct' }
 	];
 
@@ -272,8 +270,7 @@ function emit_xray() {
 			{
 				tag: 'direct',
 				protocol: 'freedom',
-				settings: {},
-				streamSettings: { sockopt: { mark: fwmark } }
+				settings: {}
 			},
 			{ tag: 'block', protocol: 'blackhole', settings: {} }
 		],
