@@ -40,7 +40,13 @@ jobs:
       - name: Add package and feeds
         run: |
           mkdir -p sdk/package/hy2route
-          rsync --archive --exclude '.git/' --exclude '.github/' ./ sdk/package/hy2route/
+          rsync --archive \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'sdk/' \
+            --exclude 'artifacts/' \
+            --exclude "$SDK_ARCHIVE" \
+            ./ sdk/package/hy2route/
           cd sdk
           ./scripts/feeds update -a
           ./scripts/feeds install xray-core
