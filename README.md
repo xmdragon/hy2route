@@ -21,6 +21,10 @@ are transparently proxied. Explicit IP and domain rules can force either path.
   DNS. HTTP landing mode uses the configured bootstrap DNS directly because
   an HTTP proxy cannot transport dnsmasq's UDP upstream queries.
 
+`allow_insecure` is available only for migrating HY2 servers that do not have
+a verifiable certificate. Leave it disabled when possible; a configured
+`pinned_cert_sha256` takes precedence.
+
 ## Landing protocol limits
 
 SOCKS5 can carry TCP and UDP only when the landing server supports SOCKS5 UDP

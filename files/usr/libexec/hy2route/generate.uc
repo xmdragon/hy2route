@@ -162,6 +162,12 @@ function make_relay() {
 	let pinned = text(relay.pinned_cert_sha256, '');
 	if (pinned != '')
 		tls.pinnedPeerCertSha256 = pinned;
+	else if (boolean(relay.allow_insecure, false)) {
+		// Xray >= 26.1.31 removed allowInsecure. Empty verification fields are
+		// its compatibility representation for subscriptions using insecure=1.
+		tls.pinnedPeerCertSha256 = '';
+		tls.verifyPeerCertByName = '';
+	}
 
 	return {
 		tag: 'hy2-relay',
