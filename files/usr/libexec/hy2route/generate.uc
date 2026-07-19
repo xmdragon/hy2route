@@ -107,8 +107,6 @@ if (congestion != 'bbr' && congestion != 'reno')
 	fail("congestion must be 'bbr' or 'reno'");
 if (bbr_profile != 'conservative' && bbr_profile != 'standard' && bbr_profile != 'aggressive')
 	fail("bbr_profile must be 'conservative', 'standard' or 'aggressive'");
-if (landing_type == 'http' && udp_policy == 'proxy')
-	fail("HTTP landing cannot carry UDP; set udp_policy to 'block' or 'direct'");
 if (match(lan_interface, /^[A-Za-z0-9_.:-]+$/) == null)
 	fail('lan_interface contains unsupported characters');
 
@@ -213,18 +211,28 @@ function emit_xray() {
 		{ ip: [ 'geoip:private' ], outboundTag: 'direct' }
 	];
 
-	for (let domain in proxy_domains)
-		push(route_rules, { domain: [ 'domain:' + domain ], outboundTag: 'chain' });
+	for (let domain in proxy_domains) {
+		push(route_rules, { domain: [ 'domain:' + domain ], network: 'udp', outboundTag: 'hy2-relay' });
+		push(route_rules, { domain: [ 'domain:' + domain ], network: 'tcp', outboundTag: 'chain' });
+	}
 	for (let domain in direct_domains)
 		push(route_rules, { domain: [ 'domain:' + domain ], outboundTag: 'direct' });
-	for (let ip in proxy_ips)
-		push(route_rules, { ip: [ ip ], outboundTag: 'chain' });
+	for (let ip in proxy_ips) {
+		push(route_rules, { ip: [ ip ], network: 'udp', outboundTag: 'hy2-relay' });
+		push(route_rules, { ip: [ ip ], network: 'tcp', outboundTag: 'chain' });
+	}
 	for (let ip in direct_ips)
 		push(route_rules, { ip: [ ip ], outboundTag: 'direct' });
 
 	push(route_rules, { ip: [ 'geoip:cn' ], outboundTag: 'direct' });
 	push(route_rules, {
-		inboundTag: [ 'tcp-redirect', 'udp-tproxy', 'test-socks' ],
+		inboundTag: [ 'udp-tproxy', 'test-socks' ],
+		network: 'udp',
+		outboundTag: 'hy2-relay'
+	});
+	push(route_rules, {
+		inboundTag: [ 'tcp-redirect', 'test-socks' ],
+		network: 'tcp',
 		outboundTag: 'chain'
 	});
 
@@ -271,7 +279,7 @@ function emit_xray() {
 				listen: '127.0.0.1',
 				port: test_socks_port,
 				protocol: 'socks',
-				settings: { auth: 'noauth', udp: landing_type == 'socks' },
+				settings: { auth: 'noauth', udp: true },
 				sniffing: {
 					enabled: true,
 					routeOnly: true,
@@ -334,21 +342,15 @@ function emit_nft() {
 	print('\t\tiifname != "' + lan_interface + '" return\n');
 	print('\t\tmeta nfproto != ipv4 return\n');
 	print('\t\tip daddr @bypass4 return\n');
-	if (landing_type == 'socks' && udp_policy == 'proxy') {
-		print('\t\tip daddr @force_proxy4 meta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
-		print('\t\tip daddr @force_direct4 return\n');
-		print('\t\tip daddr @china4 return\n');
+	print('\t\tip daddr @force_proxy4 meta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
+	print('\t\tip daddr @force_direct4 return\n');
+	print('\t\tip daddr @china4 return\n');
+	if (udp_policy == 'proxy')
 		print('\t\tmeta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
-	}
-	else {
-		print('\t\tip daddr @force_proxy4 meta l4proto udp drop\n');
-		print('\t\tip daddr @force_direct4 return\n');
-		print('\t\tip daddr @china4 return\n');
-		if (udp_policy == 'block')
-			print('\t\tmeta l4proto udp drop\n');
-		else
-			print('\t\tmeta l4proto udp return\n');
-	}
+	else if (udp_policy == 'block')
+		print('\t\tmeta l4proto udp drop\n');
+	else
+		print('\t\tmeta l4proto udp return\n');
 	print('\t}\n');
 
 	print('\tchain prerouting_nat {\n');

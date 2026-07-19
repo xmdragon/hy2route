@@ -37,7 +37,7 @@ return view.extend({
 		var m, s, o;
 
 		m = new form.Map('hy2route', 'HY2Route',
-			_('HY2 中转到 SOCKS/HTTP 落地的透明代理。中国大陆 IPv4 默认直连，其他流量默认使用代理链。'));
+			_('透明代理：TCP 经 HY2 中转到 SOCKS/HTTP 落地，UDP 直接从 HY2 中转出站。中国大陆 IPv4 默认直连。'));
 
 		s = m.section(form.NamedSection, 'main', 'main', _('基本设置'));
 		s.tab('general', _('常规'));
@@ -48,7 +48,7 @@ return view.extend({
 		o.default = o.disabled;
 
 		o = s.taboption('general', form.ListValue, 'udp_policy', _('UDP 策略'),
-			_('SOCKS 落地可代理 UDP；HTTP 落地只能选择直连或阻止。'));
+			_('代理 UDP 直接从 HY2 中转出站，不经过 SOCKS/HTTP 落地。'));
 		o.value('proxy', _('代理'));
 		o.value('direct', _('直连'));
 		o.value('block', _('阻止'));
@@ -167,14 +167,6 @@ return view.extend({
 		o.value('http', _('HTTP'));
 		o.default = 'socks';
 		o.rmempty = false;
-		o.validate = function(sectionId, value) {
-			var policyOptions = m.lookupOption('udp_policy', 'main');
-			var policy = policyOptions.length ? policyOptions[0].formvalue('main') : 'proxy';
-
-			if (value === 'http' && policy === 'proxy')
-				return _('HTTP 落地不支持 UDP 代理，请先将 UDP 策略改为直连或阻止。');
-			return true;
-		};
 
 		o = s.option(form.Value, 'server', _('服务器'));
 		o.datatype = 'host';

@@ -1,13 +1,15 @@
 # hy2route
 
-`hy2route` is a deliberately small OpenWrt service for this topology:
+`hy2route` is a deliberately small OpenWrt service for this split topology:
 
 ```text
-LAN client -> HY2 relay -> SOCKS5 or HTTP landing -> Internet
+TCP: LAN client -> HY2 relay -> SOCKS5 or HTTP landing -> Internet
+UDP: LAN client -> HY2 relay -> Internet
 ```
 
 Mainland China IPv4 destinations bypass Xray in nftables. Other destinations
 are transparently proxied. Explicit IP and domain rules can force either path.
+Proxied TCP exits from the landing, while proxied UDP exits from the HY2 relay.
 
 ## Design goals
 
@@ -31,12 +33,12 @@ are transparently proxied. Explicit IP and domain rules can force either path.
 a verifiable certificate. Leave it disabled when possible; a configured
 `pinned_cert_sha256` takes precedence.
 
-## Landing protocol limits
+## Protocol split
 
-SOCKS5 can carry TCP and UDP only when the landing server supports SOCKS5 UDP
-ASSOCIATE. HTTP proxy landing servers carry TCP only. With an HTTP landing,
-set `udp_policy` to `block` (recommended) or `direct` (leaks UDP outside the
-proxy). `proxy` is rejected for HTTP landings.
+The landing proxy carries TCP only. `udp_policy=proxy` sends UDP through the
+HY2 relay without involving the SOCKS5 or HTTP landing, so it does not depend
+on SOCKS5 UDP ASSOCIATE support. `udp_policy=direct` bypasses the proxy for UDP,
+and `udp_policy=block` drops non-bypassed UDP.
 
 ## Rule precedence
 
@@ -44,10 +46,17 @@ proxy). `proxy` is rejected for HTTP landings.
 2. Explicit proxy IP/domain rules.
 3. Explicit direct IP/domain rules.
 4. Mainland China IPv4 addresses are direct.
-5. Everything else uses the chain.
+5. Everything else uses the protocol split: TCP uses the landing chain; UDP
+   follows `udp_policy` (`proxy` uses the HY2 relay, `direct` bypasses it, and
+   `block` drops it).
 
 Proxy wins when the same value appears in both explicit actions. Domain rules
 are also installed as dnsmasq nft sets, so they do not depend on TLS sniffing.
+
+Latency-sensitive UDP services may perform poorly when the HY2 relay is far
+from their STUN/TURN infrastructure. Add explicit direct IP/CIDR rules for the
+service's documented UDP ranges when low latency matters; other UDP traffic
+continues to follow `udp_policy`.
 
 ## LuCI configuration
 
