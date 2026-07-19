@@ -1,0 +1,11 @@
+{
+	"luci-app-hy2route": {
+		"description": "Grant access to HY2Route configuration",
+		"read": {
+			"uci": [ "hy2route" ]
+		},
+		"write": {
+			"uci": [ "hy2route" ]
+		}
+	}
+}

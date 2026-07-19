@@ -1,0 +1,72 @@
+name: Build OpenWrt package
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  SDK_ARCHIVE: openwrt-sdk-23.05.0-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+  SDK_SHA256: f54750fc4d0b70ed9a319ebc4ebb3d0f3f7d43e2e854504b36fee294ea042299
+  SDK_URL: https://downloads.openwrt.org/releases/23.05.0/targets/mediatek/filogic/openwrt-sdk-23.05.0-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential clang flex bison gawk gettext \
+            libncurses-dev libssl-dev python3 rsync unzip zlib1g-dev file wget
+
+      - name: Refresh mainland China IPv4 snapshot
+        run: python3 tools/update_china4.py
+
+      - name: Download verified OpenWrt SDK
+        run: |
+          curl --fail --location --retry 3 --output "$SDK_ARCHIVE" "$SDK_URL"
+          echo "$SDK_SHA256  $SDK_ARCHIVE" | sha256sum --check --strict
+          mkdir sdk
+          tar --extract --xz --file "$SDK_ARCHIVE" --directory sdk --strip-components=1
+
+      - name: Add package
+        run: |
+          mkdir -p sdk/package/hy2route
+          rsync --archive \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'sdk/' \
+            --exclude 'artifacts/' \
+            --exclude "$SDK_ARCHIVE" \
+            ./ sdk/package/hy2route/
+          cd sdk
+          make defconfig
+
+      - name: Build hy2route
+        run: make -C sdk package/hy2route/compile V=s
+
+      - name: Collect package
+        run: |
+          mkdir artifacts
+          find sdk/bin -type f -name 'hy2route_*.ipk' -exec cp {} artifacts/ \;
+          test -n "$(find artifacts -type f -name 'hy2route_*.ipk' -print -quit)"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hy2route-openwrt-23.05.0
+          path: artifacts/*.ipk
+          if-no-files-found: error

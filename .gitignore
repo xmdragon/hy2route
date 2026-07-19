@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.ipk
+/bin/
+/build_dir/
+/staging_dir/
