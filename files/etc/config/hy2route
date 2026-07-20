@@ -23,7 +23,7 @@ config hy2 'relay'
 	option bbr_profile 'standard'
 	option udp_idle_timeout '60'
 	option max_idle_timeout '60'
-	option keep_alive_period '15'
+	option keep_alive_period '0'
 	option disable_mtu_discovery '0'
 
 config landing 'landing'

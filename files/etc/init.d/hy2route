@@ -5,6 +5,7 @@ START=99
 STOP=10
 
 PROG=/usr/bin/xray
+SUPERVISOR=/usr/libexec/hy2route/run-xray.sh
 GEN=/usr/libexec/hy2route/generate.uc
 RUNDIR=/tmp/hy2route
 DNSMASQ_SNIPPET=/tmp/dnsmasq.d/hy2route.conf
@@ -40,7 +41,7 @@ prepare_config() {
 	"$GEN" xray > "$RUNDIR/xray.json" || return 1
 	"$GEN" nft > "$RUNDIR/nft.conf" || return 1
 	"$GEN" dnsmasq > "$RUNDIR/dnsmasq.conf" || return 1
-	XRAY_LOCATION_ASSET=/usr/share/v2ray "$PROG" run -test -c "$RUNDIR/xray.json" >/dev/null || return 1
+	XRAY_LOCATION_ASSET=/usr/share/v2ray GOMEMLIMIT=80MiB "$PROG" run -test -c "$RUNDIR/xray.json" >/dev/null || return 1
 	nft -c -f "$RUNDIR/nft.conf" >/dev/null || return 1
 }
 
@@ -79,9 +80,13 @@ start_service() {
 		return 1
 	}
 
+	local test_port
+	test_port="$(config_value test_socks_port)"
+	[ -n "$test_port" ] || test_port=10780
+
 	procd_open_instance
-	procd_set_param command "$PROG" run -c "$RUNDIR/xray.json"
-	procd_set_param env XRAY_LOCATION_ASSET=/usr/share/v2ray
+	procd_set_param command "$SUPERVISOR" "$RUNDIR/xray.json" "$test_port"
+	procd_set_param env XRAY_LOCATION_ASSET=/usr/share/v2ray GOMEMLIMIT=80MiB
 	procd_set_param respawn 3600 5 5
 	procd_set_param limits nofile='65535 65535'
 	procd_set_param stdout 0

@@ -13,7 +13,7 @@ Proxied TCP exits from the landing, while proxied UDP exits from the HY2 relay.
 
 ## Design goals
 
-- One persistent process: the existing Xray core.
+- One Xray proxy core plus a lightweight POSIX shell supervisor.
 - China IP bypass happens in the kernel before traffic reaches Xray.
 - Atomic configuration validation before traffic rules are installed.
 - `procd` supervises Xray and restarts it after crashes.
@@ -25,13 +25,35 @@ Proxied TCP exits from the landing, while proxied UDP exits from the HY2 relay.
   proxy cannot transport dnsmasq's UDP upstream queries.
 - LAN IPv6 forwarding is blocked by default so an unproxied IPv6 route cannot
   bypass the IPv4 policy. Router-local IPv6 services remain reachable.
-- HY2 uses BBR with periodic QUIC keepalives by default. The package raises the
-  UDP socket buffer ceiling to 4 MiB without changing the default allocation
-  for unrelated sockets.
+- HY2 uses BBR and allows idle QUIC connections to close by default. The
+  package raises the UDP socket buffer ceiling to 4 MiB without changing the
+  default allocation for unrelated sockets.
+- Xray runs with `GOMEMLIMIT=80MiB`. The supervisor samples RSS every 30
+  seconds and restarts Xray after 3 consecutive samples above 110 MiB.
+- End-to-end health checks use two independent HTTP 204 targets. Three rounds
+  in which both targets fail may restart Xray once; further health-triggered
+  restarts are suppressed for 15 minutes while failures continue to be logged.
 
 `allow_insecure` is available only for migrating HY2 servers that do not have
 a verifiable certificate. Leave it disabled when possible; a configured
 `pinned_cert_sha256` takes precedence.
+
+## Supervisor recovery policy
+
+The supervisor keeps three failure classes separate:
+
+1. If Xray exits, the supervisor returns its status and procd applies the
+   configured crash-respawn policy.
+2. If Xray RSS exceeds 110 MiB for 3 consecutive 30-second samples, the
+   supervisor restarts the child to avoid the router's previously observed
+   out-of-memory failure.
+3. If both end-to-end health targets fail for 3 consecutive rounds, the
+   supervisor performs at most one health recovery restart per 15-minute
+   window. A relay, landing, or Internet outage therefore cannot create a
+   tight restart loop.
+
+Health recovery is deliberately weaker than crash and memory recovery because
+an end-to-end timeout does not prove that the local Xray process is unhealthy.
 
 ## Protocol split
 

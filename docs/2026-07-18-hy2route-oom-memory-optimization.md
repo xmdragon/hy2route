@@ -148,8 +148,8 @@ BREACH_LIMIT=3
 1. 每秒确认 Xray 子进程仍存活，每 30 秒读取一次 `VmRSS`。
 2. RSS 低于或等于阈值时，连续超限计数清零。
 3. 每次超限记录 warning，包含 `stage`、`label`、`elapsed`、`rss_kb`、`limit_kb`、`breaches`、`reason`。
-4. 连续 3 次超限后记录 error，终止 Xray，包装脚本退出 `1`。
-5. procd 等待 5 秒后重新拉起包装脚本和 Xray。
+4. 连续 3 次超限后记录 error，终止并重新启动 Xray 子进程；包装脚本自身保持运行。
+5. 如果 Xray 自行退出，包装脚本返回该退出状态，再由 procd 按 `respawn` 策略拉起。
 
 关键日志形态：
 
@@ -160,6 +160,22 @@ stage=process-watch label=xray elapsed=... exit_status=... reason=process-exited
 ```
 
 如果 Xray 先被内核 OOM Killer 杀死，包装脚本会在约 1 秒内发现子进程退出并结束；procd 再等待 5 秒拉起，单次故障预计约 5～6 秒恢复。若一小时内反复崩溃并超过 `respawn 3600 5 5` 的重试限制，procd 会停止继续拉起，避免无限重启循环。
+
+### 5.4 链路健康检查与重启冷却
+
+2026-07-20 UTC 的现场日志显示，旧版 supervisor 只通过本地 SOCKS 访问单一的 `www.gstatic.com/generate_204`。13:38～13:46 连续超时时，它每 3 次失败就重启 Xray，造成 4 次重复中断；但 US HY2 服务没有重启或 OOM，同一窗口仍记录到约 10.5 MB 的 `grom` HY2 流量。重启 Xray 没有立即修复外部链路，因此单目标端到端失败不能作为本地进程故障的充分证据。
+
+release 9 将健康恢复收敛为：
+
+```text
+HEALTH_URLS=https://www.gstatic.com/generate_204 https://cp.cloudflare.com/generate_204
+HEALTH_INTERVAL_SECONDS=30
+HEALTH_TIMEOUT_SECONDS=10
+HEALTH_FAILURE_LIMIT=3
+HEALTH_RESTART_COOLDOWN_SECONDS=900
+```
+
+每轮依次探测两个目标，任一返回 HTTP 204 即视为成功；只有两个目标全部失败才增加连续失败计数。达到 3 轮后最多重启一次 Xray，随后 15 分钟内仅记录 `restart-suppressed-cooldown`，不会再次因健康检查重启。冷却结束记录 `health-restart-rearmed`。RSS 超限重启和真实进程退出恢复不受该冷却影响。
 
 ## 6. 部署验证
 
@@ -184,7 +200,7 @@ elapsed=2s rss_kb=17240 limit_kb=1 breaches=2 reason=threshold-exceeded
 elapsed=2s rss_kb=17240 limit_kb=1 breaches=2 reason=restart-after-consecutive-thresholds
 ```
 
-包装脚本按预期返回 `1`，测试后没有残留 Xray。停止信号测试中，包装脚本和 Xray 在 1 秒内退出；Xray 子进程环境确认包含：
+包装脚本按预期重启 Xray 子进程，测试后没有残留测试进程。停止信号测试中，包装脚本和 Xray 在 1 秒内退出；Xray 子进程环境确认包含：
 
 ```text
 GOMEMLIMIT=80MiB
@@ -256,7 +272,7 @@ nslookup openwrt.org 127.0.0.1
 
 ## 9. 回滚
 
-本次部署前保留：
+release 8 部署前保留：
 
 ```text
 /usr/libexec/hy2route/generate.uc.bak-20260719-memory-guard
@@ -277,6 +293,6 @@ nslookup openwrt.org 127.0.0.1
 - 当前只观察了约 6 分钟，原 OOM 出现在长时间运行后，不能据此宣称根因已完全消除。
 - `GOMEMLIMIT` 是软限制；高存活堆、QUIC 缓冲、文件映射或内核网络缓冲仍可能使 RSS 超过 80 MiB。
 - 看门狗重启会造成约 5～6 秒代理中断；连续故障超过 procd 重试限制后需要人工恢复。
-- 当前脚本仅部署在路由器，仓库没有对应安装源。后续若要在多台设备复用，应将 init、生成器、看门狗和安装/回滚流程纳入受版本控制的独立部署目录，而不是继续只维护设备内文件。
+- release 9 已将 init、生成器、supervisor、测试和安装流程纳入 `xmdragon/hy2route`；后续修改必须同时更新包版本和回归契约，避免路由器文件再次领先仓库。
 
 下一轮验收至少覆盖：数小时持续流量、UDP/QUIC 高并发、大文件下载、空闲后重新握手、主动看门狗重启以及真实 OOM 后的 procd 自动拉起。

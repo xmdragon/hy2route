@@ -196,7 +196,7 @@ function make_relay() {
 					congestion: congestion,
 					bbrProfile: bbr_profile,
 					maxIdleTimeout: number(relay.max_idle_timeout, 60, 4, 120, 'max_idle_timeout'),
-					keepAlivePeriod: number(relay.keep_alive_period, 15, 2, 60, 'keep_alive_period'),
+					keepAlivePeriod: number(relay.keep_alive_period, 0, 0, 60, 'keep_alive_period'),
 					disablePathMTUDiscovery: boolean(relay.disable_mtu_discovery, false)
 				}
 			}
