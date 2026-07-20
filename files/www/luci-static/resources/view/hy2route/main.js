@@ -153,8 +153,9 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'keep_alive_period', _('QUIC 保活间隔（秒）'));
-		o.datatype = 'range(2,60)';
-		o.default = '15';
+		o.datatype = 'range(0,60)';
+		o.default = '0';
+		o.description = _('0 表示关闭主动保活，允许空闲 QUIC 连接按最大空闲时间关闭。');
 		o.rmempty = false;
 
 		o = s.option(form.Flag, 'disable_mtu_discovery', _('禁用路径 MTU 探测'));

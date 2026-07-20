@@ -165,7 +165,7 @@ stage=process-watch label=xray elapsed=... exit_status=... reason=process-exited
 
 2026-07-20 UTC 的现场日志显示，旧版 supervisor 只通过本地 SOCKS 访问单一的 `www.gstatic.com/generate_204`。13:38～13:46 连续超时时，它每 3 次失败就重启 Xray，造成 4 次重复中断；但 US HY2 服务没有重启或 OOM，同一窗口仍记录到约 10.5 MB 的 `grom` HY2 流量。重启 Xray 没有立即修复外部链路，因此单目标端到端失败不能作为本地进程故障的充分证据。
 
-release 9 将健康恢复收敛为：
+release 10 将健康恢复收敛为：
 
 ```text
 HEALTH_URLS=https://www.gstatic.com/generate_204 https://cp.cloudflare.com/generate_204
@@ -293,6 +293,6 @@ release 8 部署前保留：
 - 当前只观察了约 6 分钟，原 OOM 出现在长时间运行后，不能据此宣称根因已完全消除。
 - `GOMEMLIMIT` 是软限制；高存活堆、QUIC 缓冲、文件映射或内核网络缓冲仍可能使 RSS 超过 80 MiB。
 - 看门狗重启会造成约 5～6 秒代理中断；连续故障超过 procd 重试限制后需要人工恢复。
-- release 9 已将 init、生成器、supervisor、测试和安装流程纳入 `xmdragon/hy2route`；后续修改必须同时更新包版本和回归契约，避免路由器文件再次领先仓库。
+- release 10 已将 init、生成器、supervisor、LuCI 的 `keep_alive_period=0` 校验、测试和安装流程纳入 `xmdragon/hy2route`；后续修改必须同时更新包版本和回归契约，避免路由器文件再次领先仓库。
 
 下一轮验收至少覆盖：数小时持续流量、UDP/QUIC 高并发、大文件下载、空闲后重新握手、主动看门狗重启以及真实 OOM 后的 procd 自动拉起。

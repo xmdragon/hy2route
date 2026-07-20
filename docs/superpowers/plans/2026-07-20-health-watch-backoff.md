@@ -16,7 +16,7 @@
 - Default health targets are `https://www.gstatic.com/generate_204` and `https://cp.cloudflare.com/generate_204`.
 - Default health restart cooldown is 900 seconds.
 - Do not change the relay, landing, routing rules, credentials, or the user's UCI configuration.
-- Build release 9 because release 8 is already installed on the router but is missing from repository history.
+- Build release 10 because release 8 was missing from repository history and release 9 exposed an inconsistent LuCI `keep_alive_period` range during final review.
 
 ---
 
@@ -93,11 +93,12 @@ Expected: both commands exit 0; the test reports all supervisor cases passed.
 - Modify: `files/etc/init.d/hy2route`
 - Modify: `files/usr/libexec/hy2route/generate.uc`
 - Modify: `files/etc/config/hy2route`
+- Modify: `files/www/luci-static/resources/view/hy2route/main.js`
 - Modify: `Makefile`
 
 **Interfaces:**
 - Consumes: supervisor created in Task 1 and existing `test_socks_port` UCI option.
-- Produces: release 9 package that starts the supervisor with `GOMEMLIMIT=80MiB` and generates `keepAlivePeriod=0`.
+- Produces: release 10 package that starts the supervisor with `GOMEMLIMIT=80MiB`, generates `keepAlivePeriod=0`, and accepts `0` in LuCI.
 
 - [ ] **Step 1: Add a failing packaging contract test**
 
@@ -108,7 +109,9 @@ grep -Fq 'SUPERVISOR=/usr/libexec/hy2route/run-xray.sh' files/etc/init.d/hy2rout
 grep -Fq 'GOMEMLIMIT=80MiB' files/etc/init.d/hy2route
 grep -Fq "keepAlivePeriod: number(relay.keep_alive_period, 0, 0, 60" files/usr/libexec/hy2route/generate.uc
 grep -Fq "option keep_alive_period '0'" files/etc/config/hy2route
-grep -Fq 'PKG_RELEASE:=9' Makefile
+grep -Fq "o.datatype = 'range(0,60)';" files/www/luci-static/resources/view/hy2route/main.js
+grep -Fq "o.default = '0';" files/www/luci-static/resources/view/hy2route/main.js
+grep -Fq 'PKG_RELEASE:=10' Makefile
 grep -Fq 'run-xray.sh $(1)/usr/libexec/hy2route/run-xray.sh' Makefile
 ```
 
@@ -127,7 +130,7 @@ procd_set_param command "$SUPERVISOR" "$RUNDIR/xray.json" "$test_port"
 procd_set_param env XRAY_LOCATION_ASSET=/usr/share/v2ray GOMEMLIMIT=80MiB
 ```
 
-Install and chmod `run-xray.sh`, set new-install keepalive to `0`, and bump `PKG_RELEASE` from 7 to 9.
+Install and chmod `run-xray.sh`, set new-install and LuCI keepalive defaults to `0`, allow the LuCI range `0..60`, and bump `PKG_RELEASE` to 10.
 
 - [ ] **Step 4: Run all repository contracts**
 
@@ -159,7 +162,7 @@ Document one Xray proxy core plus a lightweight supervisor, `GOMEMLIMIT=80MiB`, 
 
 - [ ] **Step 2: Update the incident document**
 
-Correct the statement that the supervisor exits after a memory breach: it internally restarts the child. Add the July 20 evidence that a single-target health check caused repeated restarts during an external chain timeout, and record the release 9 behavior.
+Correct the statement that the supervisor exits after a memory breach: it internally restarts the child. Add the July 20 evidence that a single-target health check caused repeated restarts during an external chain timeout, and record the release 10 behavior.
 
 - [ ] **Step 3: Scan documentation for obsolete behavior**
 
@@ -171,36 +174,36 @@ rg -n 'HEALTH_URL=|restart-after-consecutive-health-failures|仅部署在路由�
 
 Expected: no text claims that the supervisor is router-only or that every three single-target failures cause an unlimited restart loop.
 
-### Task 4: Build, deploy, and verify release 9
+### Task 4: Build, deploy, and verify release 10
 
 **Files:**
 - No repository file changes.
 
 **Interfaces:**
-- Consumes: release 9 source and router at `192.168.88.1`.
-- Produces: installed release 9 with a recoverable pre-install backup and live verification evidence.
+- Consumes: release 10 source and router at `192.168.88.1`.
+- Produces: installed release 10 with a recoverable pre-install backup and live verification evidence.
 
 - [ ] **Step 1: Build the OpenWrt package with the repository workflow or matching SDK**
 
-Run the existing package build for OpenWrt 23.05.0 `mediatek/filogic` and verify exactly one `hy2route_0.1.0-9_all.ipk` artifact is produced.
+Run the existing package build for OpenWrt 23.05.0 `mediatek/filogic` and verify exactly one `hy2route_0.1.0-10_aarch64_cortex-a53.ipk` artifact is produced.
 
 - [ ] **Step 2: Back up the current release 8 files on the router**
 
-Create a timestamped backup containing `/etc/init.d/hy2route`, `/usr/libexec/hy2route/generate.uc`, `/usr/libexec/hy2route/run-xray.sh`, and package metadata before installing release 9. Do not replace `/etc/config/hy2route`.
+Create a timestamped backup containing `/etc/init.d/hy2route`, `/usr/libexec/hy2route/generate.uc`, `/usr/libexec/hy2route/run-xray.sh`, and package metadata before installing release 10. Do not replace `/etc/config/hy2route`.
 
-- [ ] **Step 3: Install release 9 and verify static configuration**
+- [ ] **Step 3: Install release 10 and verify static configuration**
 
 Run:
 
 ```sh
-opkg install /tmp/hy2route_0.1.0-9_all.ipk
+opkg install /tmp/hy2route_0.1.0-10_aarch64_cortex-a53.ipk
 opkg status hy2route
 hy2route check
 sh -n /etc/init.d/hy2route
 sh -n /usr/libexec/hy2route/run-xray.sh
 ```
 
-Expected: package version `0.1.0-9`, configuration valid, syntax checks exit 0.
+Expected: package version `0.1.0-10`, configuration valid, syntax checks exit 0.
 
 - [ ] **Step 4: Restart once for deployment and verify normal traffic**
 
