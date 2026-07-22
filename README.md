@@ -31,8 +31,9 @@ Proxied TCP exits from the landing, while proxied UDP exits from the HY2 relay.
 - Xray runs with `GOMEMLIMIT=80MiB`. The supervisor samples RSS every 30
   seconds and restarts Xray after 3 consecutive samples above 110 MiB.
 - End-to-end health checks use two independent HTTP 204 targets. Three rounds
-  in which both targets fail may restart Xray once; further health-triggered
-  restarts are suppressed for 15 minutes while failures continue to be logged.
+  in which both targets fail may restart Xray once. Further health-triggered
+  restarts remain suppressed until the 15-minute cooldown has elapsed and the
+  chain has completed 3 consecutive successful rounds.
 
 `allow_insecure` is available only for migrating HY2 servers that do not have
 a verifiable certificate. Leave it disabled when possible; a configured
@@ -48,9 +49,10 @@ The supervisor keeps three failure classes separate:
    supervisor restarts the child to avoid the router's previously observed
    out-of-memory failure.
 3. If both end-to-end health targets fail for 3 consecutive rounds, the
-   supervisor performs at most one health recovery restart per 15-minute
-   window. A relay, landing, or Internet outage therefore cannot create a
-   tight restart loop.
+   supervisor performs one health recovery restart for that outage. It does
+   not rearm until the 15-minute cooldown has elapsed and the chain has passed
+   3 consecutive health rounds, so a persistent relay, landing, or Internet
+   outage cannot cause periodic Xray restarts.
 
 Health recovery is deliberately weaker than crash and memory recovery because
 an end-to-end timeout does not prove that the local Xray process is unhealthy.

@@ -18,7 +18,7 @@ require_literal files/etc/config/hy2route "option keep_alive_period '0'"
 require_literal files/www/luci-static/resources/view/hy2route/main.js "o.datatype = 'range(0,60)';"
 require_literal files/www/luci-static/resources/view/hy2route/main.js "o.default = '0';"
 require_literal files/www/luci-static/resources/view/hy2route/main.js "0 表示关闭主动保活"
-require_literal Makefile 'PKG_RELEASE:=10'
+require_literal Makefile 'PKG_RELEASE:=11'
 require_literal Makefile 'files/usr/libexec/hy2route/run-xray.sh'
 require_literal Makefile '$(INSTALL_BIN) ./files/usr/libexec/hy2route/run-xray.sh $(1)/usr/libexec/hy2route/run-xray.sh'
 
