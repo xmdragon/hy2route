@@ -3,7 +3,8 @@
 `hy2route` is a deliberately small OpenWrt service for this split topology:
 
 ```text
-TCP: LAN client -> HY2 relay -> SOCKS5 or HTTP landing -> Internet
+TCP (default): LAN client -> HY2 relay -> SOCKS5 or HTTP landing -> Internet
+TCP (optional): LAN client -> VLESS Reality relay -> SOCKS5 or HTTP landing -> Internet
 UDP: LAN client -> HY2 relay -> Internet
 ```
 
@@ -19,10 +20,14 @@ Proxied TCP exits from the landing, while proxied UDP exits from the HY2 relay.
 - `procd` supervises Xray and restarts it after crashes.
 - The package is disabled by default and refuses to start while Passwall2 is
   running.
-- With a SOCKS5 landing, DNS goes through the HY2 relay but deliberately exits
-  before the landing proxy. This keeps DNS independent of SOCKS5 UDP support.
-  HTTP landing mode uses the configured bootstrap DNS directly because an HTTP
-  proxy cannot transport dnsmasq's UDP upstream queries.
+- When the optional VLESS TCP relay is enabled, proxied TCP and remote DNS use
+  VLESS Reality to reach the relay while ordinary UDP continues through HY2.
+  This keeps long-lived TCP sessions independent from the HY2/QUIC path without
+  changing their configured SOCKS5 or HTTP landing exit.
+- Without the optional VLESS relay, a SOCKS5 landing sends DNS through HY2 but
+  exits before the landing proxy. HTTP landing mode uses the configured
+  bootstrap DNS directly because an HTTP proxy cannot transport dnsmasq's UDP
+  upstream queries.
 - LAN IPv6 forwarding is blocked by default so an unproxied IPv6 route cannot
   bypass the IPv4 policy. Router-local IPv6 services remain reachable.
 - HY2 uses BBR and allows idle QUIC connections to close by default. The
@@ -59,10 +64,16 @@ an end-to-end timeout does not prove that the local Xray process is unhealthy.
 
 ## Protocol split
 
-The landing proxy carries TCP only. `udp_policy=proxy` sends UDP through the
-HY2 relay without involving the SOCKS5 or HTTP landing, so it does not depend
+The landing proxy carries TCP only. TCP reaches it through HY2 by default, or
+through the optional VLESS Reality relay when `tcp_relay.enabled=1`. Remote DNS
+also uses the VLESS relay in hybrid mode. `udp_policy=proxy` sends ordinary UDP
+through HY2 without involving the SOCKS5 or HTTP landing, so it does not depend
 on SOCKS5 UDP ASSOCIATE support. `udp_policy=direct` bypasses the proxy for UDP,
 and `udp_policy=block` drops non-bypassed UDP.
+
+The VLESS section is optional so an upgraded release 11 configuration remains
+valid and keeps its original HY2-only transport until the operator explicitly
+enables the new relay.
 
 ## Rule precedence
 
@@ -70,9 +81,9 @@ and `udp_policy=block` drops non-bypassed UDP.
 2. Explicit proxy IP/domain rules.
 3. Explicit direct IP/domain rules.
 4. Mainland China IPv4 addresses are direct.
-5. Everything else uses the protocol split: TCP uses the landing chain; UDP
-   follows `udp_policy` (`proxy` uses the HY2 relay, `direct` bypasses it, and
-   `block` drops it).
+5. Everything else uses the protocol split: TCP uses the landing chain over
+   VLESS when enabled (otherwise HY2); UDP follows `udp_policy` (`proxy` uses
+   the HY2 relay, `direct` bypasses it, and `block` drops it).
 
 Proxy wins when the same value appears in both explicit actions. Domain rules
 are also installed as dnsmasq nft sets, so they do not depend on TLS sniffing.

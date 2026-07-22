@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hy2route
 PKG_VERSION:=0.1.0
-PKG_RELEASE:=11
+PKG_RELEASE:=12
 PKG_LICENSE:=MIT
 PKGARCH:=all
 
@@ -11,13 +11,13 @@ include $(INCLUDE_DIR)/package.mk
 define Package/hy2route
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=Minimal HY2 chained transparent proxy
+  TITLE:=Minimal hybrid relay transparent proxy
   DEPENDS:=+xray-core +nftables-json +kmod-nft-tproxy +ip-full +ucode +ucode-mod-uci +dnsmasq-full +curl +ca-bundle +luci-base
 endef
 
 define Package/hy2route/description
- A small OpenWrt service for HY2 relay to SOCKS/HTTP landing chains,
- with mainland China IP bypass and explicit IP/domain overrides.
+ A small OpenWrt service for VLESS/HY2 relay to SOCKS/HTTP landing chains,
+ with direct HY2 UDP egress, mainland China bypass and explicit overrides.
 endef
 
 define Package/hy2route/conffiles

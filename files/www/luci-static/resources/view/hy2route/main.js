@@ -37,7 +37,7 @@ return view.extend({
 		var m, s, o;
 
 		m = new form.Map('hy2route', 'HY2Route',
-			_('透明代理：TCP 经 HY2 中转到 SOCKS/HTTP 落地，UDP 直接从 HY2 中转出站。中国大陆 IPv4 默认直连。'));
+			_('透明代理：TCP 可经 VLESS 中转到 SOCKS/HTTP 落地，UDP 直接从 HY2 中转出站。中国大陆 IPv4 默认直连。'));
 
 		s = m.section(form.NamedSection, 'main', 'main', _('基本设置'));
 		s.tab('general', _('常规'));
@@ -160,6 +160,66 @@ return view.extend({
 
 		o = s.option(form.Flag, 'disable_mtu_discovery', _('禁用路径 MTU 探测'));
 		o.default = o.disabled;
+
+		s = m.section(form.NamedSection, 'tcp_relay', 'vless', _('VLESS TCP 中转'));
+
+		o = s.option(form.Flag, 'enabled', _('启用 TCP 中转'),
+			_('仅将代理 TCP 和远程 DNS 改走 VLESS Reality；普通 UDP 仍直接从 HY2 中转出站。'));
+		o.default = o.disabled;
+
+		o = s.option(form.Value, 'server', _('服务器'));
+		o.datatype = 'host';
+		o.rmempty = false;
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'port', _('端口'));
+		o.datatype = 'port';
+		o.default = '443';
+		o.rmempty = false;
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'id', _('VLESS 客户端 ID'));
+		o.password = true;
+		o.rmempty = false;
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'server_name', _('REALITY Server Name'));
+		o.datatype = 'host';
+		o.rmempty = false;
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'reality_password', _('REALITY 公钥'));
+		o.password = true;
+		o.rmempty = false;
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'short_id', _('REALITY Short ID'));
+		o.password = true;
+		o.rmempty = true;
+		o.depends('enabled', '1');
+
+		o = s.option(form.ListValue, 'fingerprint', _('uTLS 指纹'));
+		o.value('chrome', 'Chrome');
+		o.value('firefox', 'Firefox');
+		o.value('safari', 'Safari');
+		o.value('ios', 'iOS');
+		o.value('android', 'Android');
+		o.value('edge', 'Edge');
+		o.default = 'chrome';
+		o.rmempty = false;
+		o.depends('enabled', '1');
+
+		o = s.option(form.ListValue, 'flow', _('VLESS Flow'));
+		o.value('xtls-rprx-vision', 'XTLS Vision');
+		o.value('xtls-rprx-vision-udp443', 'XTLS Vision UDP/443');
+		o.default = 'xtls-rprx-vision';
+		o.rmempty = false;
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'spider_x', _('REALITY Spider X'));
+		o.placeholder = '/';
+		o.rmempty = true;
+		o.depends('enabled', '1');
 
 		s = m.section(form.NamedSection, 'landing', 'landing', _('落地代理'));
 
