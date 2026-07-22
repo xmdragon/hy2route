@@ -78,9 +78,13 @@ function nft_join(items) {
 const main = get_section('main', 'main');
 const relay = get_section('hy2', 'relay');
 const landing = get_section('landing', 'landing');
+let tcp_relay = uci.get_all('hy2route', 'tcp_relay');
 
 const relay_server = text(relay.server, '');
 const landing_server = text(landing.server, '');
+const tcp_relay_enabled = tcp_relay != null && boolean(tcp_relay.enabled, false);
+const tcp_relay_server = tcp_relay_enabled ? text(tcp_relay.server, '') : '';
+const tcp_transport_tag = tcp_relay_enabled ? 'tcp-relay' : 'hy2-relay';
 const landing_type = text(landing.type, 'socks');
 const lan_interface = text(main.lan_interface, 'br-lan');
 const transparent_port = number(main.transparent_port, 12345, 1, 65535, 'transparent_port');
@@ -97,6 +101,27 @@ const bbr_profile = text(relay.bbr_profile, 'standard');
 
 if (!valid_host(relay_server) || !valid_host(landing_server))
 	fail('relay and landing server values may contain only letters, digits, dot, colon, underscore and dash');
+if (tcp_relay_enabled) {
+	let id = text(tcp_relay.id, '');
+	let server_name = text(tcp_relay.server_name, '');
+	let reality_password = text(tcp_relay.reality_password, '');
+	let short_id = text(tcp_relay.short_id, '');
+	let fingerprint = text(tcp_relay.fingerprint, 'chrome');
+	let flow = text(tcp_relay.flow, 'xtls-rprx-vision');
+
+	if (!valid_host(tcp_relay_server) || !valid_host(server_name))
+		fail('tcp_relay server and server_name must be valid hosts');
+	if (id == '' || reality_password == '')
+		fail('tcp_relay id and reality_password must not be empty');
+	if (match(short_id, /^([0-9A-Fa-f]{2}){0,8}$/) == null)
+		fail('tcp_relay short_id must contain an even number of hexadecimal characters, up to 16');
+	if (fingerprint != 'chrome' && fingerprint != 'firefox' && fingerprint != 'safari' &&
+		fingerprint != 'ios' && fingerprint != 'android' && fingerprint != 'edge' &&
+		fingerprint != 'random' && fingerprint != 'randomized')
+		fail('tcp_relay fingerprint is unsupported');
+	if (flow != '' && flow != 'xtls-rprx-vision' && flow != 'xtls-rprx-vision-udp443')
+		fail('tcp_relay flow is unsupported');
+}
 if (!is_ipv4(remote_dns) || !is_ipv4(bootstrap_dns))
 	fail('remote_dns and bootstrap_dns must be valid IPv4 addresses');
 if (landing_type != 'socks' && landing_type != 'http')
@@ -157,7 +182,37 @@ function make_landing() {
 		tag: 'chain',
 		protocol: landing_type,
 		settings: { servers: [ server ] },
-		proxySettings: { tag: 'hy2-relay', transportLayer: true },
+		proxySettings: { tag: tcp_transport_tag, transportLayer: true },
+		mux: { enabled: false }
+	};
+}
+
+function make_tcp_relay() {
+	let settings = {
+		address: tcp_relay_server,
+		port: number(tcp_relay.port, 443, 1, 65535, 'tcp_relay port'),
+		id: text(tcp_relay.id, ''),
+		encryption: 'none'
+	};
+	let flow = text(tcp_relay.flow, 'xtls-rprx-vision');
+	if (flow != '')
+		settings.flow = flow;
+
+	return {
+		tag: 'tcp-relay',
+		protocol: 'vless',
+		settings: settings,
+		streamSettings: {
+			method: 'raw',
+			security: 'reality',
+			realitySettings: {
+				serverName: text(tcp_relay.server_name, ''),
+				fingerprint: text(tcp_relay.fingerprint, 'chrome'),
+				password: text(tcp_relay.reality_password, ''),
+				shortId: text(tcp_relay.short_id, ''),
+				spiderX: text(tcp_relay.spider_x, '')
+			}
+		},
 		mux: { enabled: false }
 	};
 }
@@ -207,7 +262,7 @@ function make_relay() {
 
 function emit_xray() {
 	let route_rules = [
-		{ inboundTag: [ 'dns-proxy' ], outboundTag: 'hy2-relay' },
+		{ inboundTag: [ 'dns-proxy' ], outboundTag: tcp_transport_tag },
 		{ ip: [ 'geoip:private' ], outboundTag: 'direct' }
 	];
 
@@ -235,6 +290,19 @@ function emit_xray() {
 		network: 'tcp',
 		outboundTag: 'chain'
 	});
+
+	let outbounds = [
+		make_landing(),
+		make_relay(),
+		{
+			tag: 'direct',
+			protocol: 'freedom',
+			settings: {}
+		},
+		{ tag: 'block', protocol: 'blackhole', settings: {} }
+	];
+	if (tcp_relay_enabled)
+		push(outbounds, make_tcp_relay());
 
 	let config = {
 		log: { loglevel: log_level },
@@ -271,7 +339,7 @@ function emit_xray() {
 				settings: {
 					address: remote_dns,
 					port: 53,
-					network: landing_type == 'socks' ? 'tcp,udp' : 'tcp'
+					network: tcp_relay_enabled || landing_type == 'socks' ? 'tcp,udp' : 'tcp'
 				}
 			},
 			{
@@ -287,16 +355,7 @@ function emit_xray() {
 				}
 			}
 		],
-		outbounds: [
-			make_landing(),
-			make_relay(),
-			{
-				tag: 'direct',
-				protocol: 'freedom',
-				settings: {}
-			},
-			{ tag: 'block', protocol: 'blackhole', settings: {} }
-		],
+		outbounds: outbounds,
 		routing: {
 			domainStrategy: 'IPIfNonMatch',
 			domainMatcher: 'hybrid',
@@ -317,6 +376,8 @@ function emit_nft() {
 		push(bypass, relay_server);
 	if (is_ipv4(landing_server))
 		push(bypass, landing_server);
+	if (tcp_relay_enabled && is_ipv4(tcp_relay_server))
+		push(bypass, tcp_relay_server);
 
 	print('table inet hy2route {\n');
 	print('\tset bypass4 {\n\t\ttype ipv4_addr\n\t\tflags interval\n\t\tauto-merge\n');
@@ -376,6 +437,8 @@ function emit_dnsmasq() {
 		print('server=/' + relay_server + '/' + bootstrap_dns + '\n');
 	if (!is_ipv4(landing_server) && landing_server != relay_server)
 		print('server=/' + landing_server + '/' + bootstrap_dns + '\n');
+	if (tcp_relay_enabled && !is_ipv4(tcp_relay_server))
+		print('server=/' + tcp_relay_server + '/' + bootstrap_dns + '\n');
 
 	for (let domain in direct_domains) {
 		print('server=/' + domain + '/' + bootstrap_dns + '\n');
@@ -384,7 +447,7 @@ function emit_dnsmasq() {
 	for (let domain in proxy_domains)
 		print('nftset=/' + domain + '/4#inet#hy2route#force_proxy4\n');
 
-	if (landing_type == 'socks')
+	if (tcp_relay_enabled || landing_type == 'socks')
 		print('server=127.0.0.1#' + dns_port + '\n');
 	else
 		print('server=' + bootstrap_dns + '\n');
