@@ -12,6 +12,7 @@ BREACH_LIMIT="${HY2ROUTE_BREACH_LIMIT:-3}"
 HEALTH_INTERVAL_SECONDS="${HY2ROUTE_HEALTH_INTERVAL_SECONDS:-30}"
 HEALTH_TIMEOUT_SECONDS="${HY2ROUTE_HEALTH_TIMEOUT_SECONDS:-10}"
 HEALTH_FAILURE_LIMIT="${HY2ROUTE_HEALTH_FAILURE_LIMIT:-3}"
+HEALTH_RECOVERY_SUCCESS_LIMIT="${HY2ROUTE_HEALTH_RECOVERY_SUCCESS_LIMIT:-3}"
 HEALTH_URLS="${HY2ROUTE_HEALTH_URLS:-https://www.gstatic.com/generate_204 https://cp.cloudflare.com/generate_204}"
 HEALTH_RESTART_COOLDOWN_SECONDS="${HY2ROUTE_HEALTH_RESTART_COOLDOWN_SECONDS:-900}"
 RESTART_DELAY_SECONDS="${HY2ROUTE_RESTART_DELAY_SECONDS:-5}"
@@ -31,7 +32,7 @@ fail() {
 [ -x "$CURL" ] || fail 'curl-not-executable'
 [ -n "$HEALTH_URLS" ] || fail 'missing-health-targets'
 
-case "$RSS_LIMIT_KB:$CHECK_INTERVAL_SECONDS:$BREACH_LIMIT:$HEALTH_INTERVAL_SECONDS:$HEALTH_TIMEOUT_SECONDS:$HEALTH_FAILURE_LIMIT:$HEALTH_RESTART_COOLDOWN_SECONDS:$RESTART_DELAY_SECONDS:$TEST_SOCKS_PORT" in
+case "$RSS_LIMIT_KB:$CHECK_INTERVAL_SECONDS:$BREACH_LIMIT:$HEALTH_INTERVAL_SECONDS:$HEALTH_TIMEOUT_SECONDS:$HEALTH_FAILURE_LIMIT:$HEALTH_RECOVERY_SUCCESS_LIMIT:$HEALTH_RESTART_COOLDOWN_SECONDS:$RESTART_DELAY_SECONDS:$TEST_SOCKS_PORT" in
 	*[!0-9:]*) fail 'invalid-supervisor-number' ;;
 esac
 [ "$RSS_LIMIT_KB" -gt 0 ] || fail 'invalid-rss-limit'
@@ -40,6 +41,7 @@ esac
 [ "$HEALTH_INTERVAL_SECONDS" -gt 0 ] || fail 'invalid-health-interval'
 [ "$HEALTH_TIMEOUT_SECONDS" -gt 0 ] || fail 'invalid-health-timeout'
 [ "$HEALTH_FAILURE_LIMIT" -gt 0 ] || fail 'invalid-health-failure-limit'
+[ "$HEALTH_RECOVERY_SUCCESS_LIMIT" -gt 0 ] || fail 'invalid-health-recovery-success-limit'
 [ "$HEALTH_RESTART_COOLDOWN_SECONDS" -gt 0 ] || fail 'invalid-health-restart-cooldown'
 [ "$TEST_SOCKS_PORT" -gt 0 ] && [ "$TEST_SOCKS_PORT" -le 65535 ] || fail 'invalid-test-socks-port'
 
@@ -78,6 +80,8 @@ read_rss_kb() {
 }
 
 health_cooldown_remaining=0
+health_restart_armed=1
+health_recovery_successes=0
 
 while :; do
 	"$PROG" run -c "$CONFIG" &
@@ -93,9 +97,6 @@ while :; do
 
 		if [ "$health_cooldown_remaining" -gt 0 ]; then
 			health_cooldown_remaining=$((health_cooldown_remaining - 1))
-			if [ "$health_cooldown_remaining" -eq 0 ]; then
-				log daemon.notice "stage=health-watch label=chain elapsed=${elapsed}s reason=health-restart-rearmed"
-			fi
 		fi
 
 		if [ $((elapsed % CHECK_INTERVAL_SECONDS)) -eq 0 ]; then
@@ -148,20 +149,35 @@ while :; do
 
 			if [ "$health_round_ok" -eq 1 ]; then
 				health_failures=0
+				if [ "$health_restart_armed" -eq 0 ]; then
+					health_recovery_successes=$((health_recovery_successes + 1))
+					if [ "$health_cooldown_remaining" -eq 0 ] && [ "$health_recovery_successes" -ge "$HEALTH_RECOVERY_SUCCESS_LIMIT" ]; then
+						health_restart_armed=1
+						log daemon.notice "stage=health-watch label=chain elapsed=${elapsed}s successes=$health_recovery_successes required=$HEALTH_RECOVERY_SUCCESS_LIMIT reason=health-restart-rearmed"
+						health_recovery_successes=0
+					fi
+				fi
 			else
 				health_failures=$((health_failures + 1))
+				health_recovery_successes=0
 				log daemon.warn "stage=health-watch label=chain elapsed=${elapsed}s probes=$probe_count results=$probe_results failures=$health_failures reason=probe-round-failed"
 			fi
 
 			if [ "$health_failures" -ge "$HEALTH_FAILURE_LIMIT" ]; then
-				if [ "$health_cooldown_remaining" -eq 0 ]; then
+				if [ "$health_restart_armed" -eq 1 ]; then
 					log daemon.err "stage=health-watch label=chain elapsed=${elapsed}s probes=$probe_count results=$probe_results failures=$health_failures cooldown_seconds=$HEALTH_RESTART_COOLDOWN_SECONDS reason=restart-after-consecutive-health-failures"
+					health_restart_armed=0
 					health_cooldown_remaining="$HEALTH_RESTART_COOLDOWN_SECONDS"
+					health_recovery_successes=0
 					restart_reason='health'
 					break
 				fi
 
-				log daemon.warn "stage=health-watch label=chain elapsed=${elapsed}s probes=$probe_count results=$probe_results failures=$health_failures cooldown_remaining=$health_cooldown_remaining reason=restart-suppressed-cooldown"
+				if [ "$health_cooldown_remaining" -gt 0 ]; then
+					log daemon.warn "stage=health-watch label=chain elapsed=${elapsed}s probes=$probe_count results=$probe_results failures=$health_failures cooldown_remaining=$health_cooldown_remaining reason=restart-suppressed-cooldown"
+				else
+					log daemon.warn "stage=health-watch label=chain elapsed=${elapsed}s probes=$probe_count results=$probe_results failures=$health_failures successes=$health_recovery_successes required=$HEALTH_RECOVERY_SUCCESS_LIMIT reason=restart-suppressed-unrecovered"
+				fi
 				health_failures=0
 			fi
 		fi
