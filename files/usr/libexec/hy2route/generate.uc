@@ -514,12 +514,7 @@ function emit_dnsmasq() {
 	for (let domain in proxy_domains)
 		print('nftset=/' + domain + '/4#inet#hy2route#force_proxy4\n');
 
-	if (smart_dns)
-		print('server=127.0.0.1#' + smart_dns_port + '\n');
-	else if (tcp_relay_enabled || landing_type == 'socks')
-		print('server=127.0.0.1#' + dns_port + '\n');
-	else
-		print('server=' + bootstrap_dns + '\n');
+	print('server=127.0.0.1#' + dns_port + '\n');
 }
 
 if (mode == 'xray')
