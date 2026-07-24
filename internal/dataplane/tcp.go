@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/netip"
 	"sync"
@@ -62,7 +63,9 @@ func (server *TCPServer) Run(ctx context.Context) error {
 		case active <- struct{}{}:
 			go func() {
 				defer func() { <-active }()
-				_ = server.handle(ctx, conn)
+				if err := server.handle(ctx, conn); err != nil && ctx.Err() == nil {
+					log.Printf("stage=tcp-connection remote=%s local=%s error=%v", conn.RemoteAddr(), conn.LocalAddr(), err)
+				}
 			}()
 		default:
 			_ = conn.Close()

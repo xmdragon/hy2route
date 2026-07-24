@@ -20,8 +20,16 @@ grep -Fq 'meta l4proto != tcp return' "$g"
 grep -Fq "meta mark ' + bypass_mark + ' return" "$g"
 grep -Fq "number(main.bypass_mark, fwmark + 1" "$g"
 grep -Fq 'meta mark vmap @output_state' "$g"
-grep -Fq 'ip daddr @force_proxy4 meta l4proto tcp redirect to :' "$g"
-! sed -n "/chain output_active {/,/^\\t}/p" "$g" | grep -Fq 'meta l4proto udp redirect'
+output_start="$(line "print('\\tchain output_active {")"
+prerouting_nat_start="$(line "print('\\tchain prerouting_nat {")"
+output_block="$(sed -n "${output_start},$((prerouting_nat_start - 2))p" "$g")"
+test "$(printf '%s\n' "$output_block" | grep -Fc "meta l4proto tcp redirect to :' + transparent_port")" -eq 3
+! printf '%s\n' "$output_block" | grep -Fq 'meta l4proto udp redirect'
+test "$(sed -n "$((prerouting_nat_start - 1))p" "$g")" = "	if (canary_source != '') {"
+prerouting_nat_end="$(awk -v start="$prerouting_nat_start" 'NR > start && /^[[:space:]]*}$/ { print NR; exit }' "$g")"
+prerouting_nat_block="$(sed -n "${prerouting_nat_start},${prerouting_nat_end}p" "$g")"
+test "$(printf '%s\n' "$prerouting_nat_block" | grep -Fc "dport 53 redirect to :' + dns_port")" -eq 2
+! printf '%s\n' "$prerouting_nat_block" | grep -Fq 'transparent_port'
 grep -Fq "if (canary_source == '')" "$g"
 grep -Fq 'bypass_mark: bypass_mark' "$g"
 grep -Fq 'unix.SO_MARK' internal/transport/socketmark_linux.go

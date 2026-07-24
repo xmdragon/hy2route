@@ -468,22 +468,15 @@ function emit_nft() {
 	print('\t\tmeta l4proto tcp redirect to :' + transparent_port + '\n');
 	print('\t}\n');
 
-	print('\tchain prerouting_nat {\n');
-	print('\t\ttype nat hook prerouting priority dstnat' + nft_priority + '; policy accept;\n');
-	print('\t\tiifname != "' + lan_interface + '" return\n');
 	if (canary_source != '') {
+		print('\tchain prerouting_nat {\n');
+		print('\t\ttype nat hook prerouting priority dstnat' + nft_priority + '; policy accept;\n');
+		print('\t\tiifname != "' + lan_interface + '" return\n');
 		print('\t\tip saddr != ' + canary_source + ' return\n');
 		print('\t\tudp dport 53 redirect to :' + dns_port + '\n');
 		print('\t\ttcp dport 53 redirect to :' + dns_port + '\n');
+		print('\t}\n');
 	}
-	print('\t\tmeta nfproto != ipv4 return\n');
-	print('\t\tmeta l4proto != tcp return\n');
-	print('\t\tip daddr @bypass4 return\n');
-	print('\t\tip daddr @force_proxy4 meta l4proto tcp redirect to :' + transparent_port + '\n');
-	print('\t\tip daddr @force_direct4 return\n');
-	print('\t\tip daddr @china4 return\n');
-	print('\t\tmeta l4proto tcp redirect to :' + transparent_port + '\n');
-	print('\t}\n');
 	print('}\n');
 	print('include "' + china4_file + '"\n');
 }
