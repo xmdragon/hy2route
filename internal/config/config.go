@@ -54,6 +54,7 @@ type HY2Config struct {
 	MaxStreamWindow         uint64   `json:"max_stream_window"`
 	InitialConnectionWindow uint64   `json:"initial_connection_window"`
 	MaxConnectionWindow     uint64   `json:"max_connection_window"`
+	MaxConcurrentDials      int      `json:"max_concurrent_dials"`
 }
 
 type LandingConfig struct {
@@ -213,6 +214,12 @@ func (c *Config) validateHY2() error {
 		return errors.New("hy2 keep_alive must be between 2s and 60s")
 	}
 	setWindowDefaults(&c.HY2)
+	if c.HY2.MaxConcurrentDials == 0 {
+		c.HY2.MaxConcurrentDials = 32
+	}
+	if !betweenInt(c.HY2.MaxConcurrentDials, 1, 256) {
+		return errors.New("hy2 max_concurrent_dials must be between 1 and 256")
+	}
 	if c.HY2.InitialStreamWindow == 0 || c.HY2.MaxStreamWindow == 0 || c.HY2.InitialConnectionWindow == 0 || c.HY2.MaxConnectionWindow == 0 ||
 		c.HY2.InitialStreamWindow > c.HY2.MaxStreamWindow || c.HY2.InitialConnectionWindow > c.HY2.MaxConnectionWindow {
 		return errors.New("hy2 windows are invalid")

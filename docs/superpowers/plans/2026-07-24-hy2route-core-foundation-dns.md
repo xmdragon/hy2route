@@ -242,6 +242,7 @@ type HY2Config struct {
 	MaxStreamWindow         uint64        `json:"max_stream_window"`
 	InitialConnectionWindow uint64        `json:"initial_connection_window"`
 	MaxConnectionWindow     uint64        `json:"max_connection_window"`
+	MaxConcurrentDials      int           `json:"max_concurrent_dials"`
 }
 
 type LandingConfig struct {
@@ -300,6 +301,7 @@ var validLanding = map[string]bool{"direct": true, "http": true, "socks5": true}
 //   contain no IPv6 literal;
 // - auth is non-empty, SNI is a valid DNS name, and pin is empty or 64 hex characters;
 // - HY2 max idle is 4s..120s and keepalive is 2s..60s;
+// - HY2 max_concurrent_dials defaults to 32 and is 1..256;
 // - stream windows default to 1 MiB/4 MiB and connection windows to
 //   4 MiB/8 MiB; initial values never exceed maximum values;
 // - limits are: DNS 64..65536, learned IP 64..131072, UDP 64..65536,

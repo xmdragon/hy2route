@@ -63,6 +63,9 @@ func TestValidateCompleteConfig(t *testing.T) {
 	if cfg.HY2.InitialConnectionWindow != 4<<20 || cfg.HY2.MaxConnectionWindow != 8<<20 {
 		t.Fatalf("unexpected connection defaults: %#v", cfg.HY2)
 	}
+	if cfg.HY2.MaxConcurrentDials != 32 {
+		t.Fatalf("unexpected HY2 dial default: %d", cfg.HY2.MaxConcurrentDials)
+	}
 }
 
 func TestValidateRejectsIPv6AndPortCollisions(t *testing.T) {
@@ -75,6 +78,12 @@ func TestValidateRejectsIPv6AndPortCollisions(t *testing.T) {
 	cfg = validConfig()
 	cfg.Listen.DNS = cfg.Listen.TCP
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "listen ports") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cfg = validConfig()
+	cfg.HY2.MaxConcurrentDials = 257
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "max_concurrent_dials") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
