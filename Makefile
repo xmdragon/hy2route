@@ -28,16 +28,13 @@ define Package/hy2route/postinst
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 chown root:root /etc/config/hy2route /etc/init.d/hy2route \
 	/usr/bin/hy2route /usr/libexec/hy2route/generate.uc \
-	/usr/libexec/hy2route/run-xray.sh \
 	/etc/sysctl.d/90-hy2route.conf \
 	/usr/share/hy2route/china4.nft \
 	/usr/share/luci/menu.d/luci-app-hy2route.json \
 	/usr/share/rpcd/acl.d/luci-app-hy2route.json \
 	/www/luci-static/resources/view/hy2route/main.js
 chmod 600 /etc/config/hy2route
-chmod 755 /etc/init.d/hy2route /usr/bin/hy2route \
-	/usr/libexec/hy2route/generate.uc \
-	/usr/libexec/hy2route/run-xray.sh
+chmod 755 /etc/init.d/hy2route /usr/bin/hy2route /usr/libexec/hy2route/generate.uc
 chmod 644 /usr/share/hy2route/china4.nft
 chmod 644 /etc/sysctl.d/90-hy2route.conf
 chmod 644 /usr/share/luci/menu.d/luci-app-hy2route.json \
@@ -63,7 +60,6 @@ define Package/hy2route/install
 	$(INSTALL_DATA) ./files/etc/sysctl.d/90-hy2route.conf $(1)/etc/sysctl.d/90-hy2route.conf
 	$(INSTALL_DIR) $(1)/usr/libexec/hy2route
 	$(INSTALL_BIN) ./files/usr/libexec/hy2route/generate.uc $(1)/usr/libexec/hy2route/generate.uc
-	$(INSTALL_BIN) ./files/usr/libexec/hy2route/run-xray.sh $(1)/usr/libexec/hy2route/run-xray.sh
 	$(INSTALL_DIR) $(1)/usr/share/hy2route
 	$(INSTALL_DATA) ./build/hy2route-data.bin $(1)/usr/share/hy2route/routing.bin
 	$(INSTALL_DATA) ./files/usr/share/hy2route/china4.nft $(1)/usr/share/hy2route/china4.nft
