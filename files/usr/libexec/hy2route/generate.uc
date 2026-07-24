@@ -399,7 +399,7 @@ function emit_nft() {
 	print('\t}\n');
 	print('\tset direct4 {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t}\n');
 	print('\tset inspect4 {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t}\n');
-	print('\tmap core_state {\n\t\ttype integer : verdict\n\t\tflags timeout\n\t}\n');
+	print('\tmap core_state {\n\t\ttype mark : verdict\n\t\tflags timeout\n\t}\n');
 	if (block_ipv6) {
 		print('\tchain block_forward_ipv6 {\n');
 		print('\t\ttype filter hook forward priority -1; policy accept;\n');

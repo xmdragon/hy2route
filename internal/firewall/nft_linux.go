@@ -22,7 +22,7 @@ type NftSetClient struct {
 
 func NewNftSetClient(tableName string) *NftSetClient {
 	table := &nftables.Table{Name: tableName, Family: nftables.TableFamilyINet}
-	return &NftSetClient{table: table, direct: &nftables.Set{Table: table, Name: "direct4", KeyType: nftables.TypeIPAddr}, inspect: &nftables.Set{Table: table, Name: "inspect4", KeyType: nftables.TypeIPAddr}, core: &nftables.Set{Table: table, Name: "core_state", KeyType: nftables.TypeInteger, DataType: nftables.TypeVerdict, IsMap: true}, states: make(map[netip.Addr]SetState)}
+	return &NftSetClient{table: table, direct: &nftables.Set{Table: table, Name: "direct4", KeyType: nftables.TypeIPAddr}, inspect: &nftables.Set{Table: table, Name: "inspect4", KeyType: nftables.TypeIPAddr}, core: &nftables.Set{Table: table, Name: "core_state", KeyType: nftables.TypeMark, DataType: nftables.TypeVerdict, IsMap: true}, states: make(map[netip.Addr]SetState)}
 }
 func clampTTL(ttl time.Duration) time.Duration {
 	if ttl < time.Second {
