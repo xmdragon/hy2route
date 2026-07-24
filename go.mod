@@ -5,9 +5,9 @@ go 1.25.0
 toolchain go1.25.12
 
 require (
+	github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f
 	github.com/apernet/hysteria/core/v2 v2.10.0
 	github.com/google/go-cmp v0.7.0
-	github.com/google/nftables v0.3.0
 	github.com/miekg/dns v1.1.72
 )
 
