@@ -14,4 +14,7 @@ test "$learned" -lt "$china"
 grep -Fq 'fib daddr type local return' "$g"
 grep -Fq 'meta mark set 1' "$g"
 grep -Fq 'meta mark vmap @core_state' "$g"
+grep -Fq "const nft_priority = canary_source != '' ? ' - 10' : '';" "$g"
+grep -Fq "priority mangle' + nft_priority" "$g"
+grep -Fq "priority dstnat' + nft_priority" "$g"
 echo 'core nft contract passed'

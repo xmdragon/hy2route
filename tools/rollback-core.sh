@@ -14,8 +14,14 @@ printf '%s\n' "backup=$backup restore-or-remove run-xray.sh"
 [ "$dry" = 1 ] && exit 0
 [ -d "$backup" ] || { echo 'verified backup directory is missing' >&2; exit 1; }
 
-/etc/init.d/hy2route stop 2>/dev/null || true
-nft delete table inet hy2route 2>/dev/null || true
+required_files='etc/config/hy2route etc/init.d/hy2route usr/bin/hy2route usr/bin/hy2route-core usr/libexec/hy2route/generate.uc usr/libexec/hy2route/run-xray.sh www/luci-static/resources/view/hy2route/main.js usr/share/hy2route/routing.bin tmp/dnsmasq.d/hy2route.conf'
+preflight_backup() {
+	for src in $required_files; do
+		[ -f "$backup/$src" ] || [ -f "$backup/$src.absent" ] || { echo "missing backup entry: $src" >&2; return 1; }
+	done
+}
+preflight_backup
+
 restore_or_remove() {
 	src=$1
 	dst=/$1
@@ -29,7 +35,10 @@ restore_or_remove() {
 		exit 1
 	fi
 }
-for file in etc/config/hy2route etc/init.d/hy2route usr/bin/hy2route usr/bin/hy2route-core usr/libexec/hy2route/generate.uc usr/libexec/hy2route/run-xray.sh www/luci-static/resources/view/hy2route/main.js usr/share/hy2route/routing.bin tmp/dnsmasq.d/hy2route.conf; do
+
+/etc/init.d/hy2route stop 2>/dev/null || true
+nft delete table inet hy2route 2>/dev/null || true
+for file in $required_files; do
 	restore_or_remove "$file"
 done
 /etc/init.d/hy2route start

@@ -16,7 +16,7 @@ case "${1:-}" in
 		echo 'hy2route configuration is valid'
 		;;
 	status)
-		if pgrep -f '[h]y2route-core serve --config /tmp/hy2route/core.json' >/dev/null 2>&1; then echo 'hy2route core is running'; else echo 'hy2route core is stopped'; exit 1; fi
+		"$PROG" status --socket /var/run/hy2route-core.sock
 		;;
 	test) "$PROG" check --config "$RUNDIR/core.json" ;;
 	reload) /etc/init.d/hy2route reload ;;

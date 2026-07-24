@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/xmdragon/hy2route/internal/config"
+	"github.com/xmdragon/hy2route/internal/control"
 	"github.com/xmdragon/hy2route/internal/dataplane"
 	"github.com/xmdragon/hy2route/internal/dataset"
 	"github.com/xmdragon/hy2route/internal/dnsproxy"
@@ -21,11 +24,15 @@ import (
 )
 
 type application struct {
-	dns     *dnsproxy.Server
-	tcp     *dataplane.TCPServer
-	udp     *dataplane.UDPServer
-	sets    firewall.SetClient
-	dnsOnly bool
+	dns         *dnsproxy.Server
+	tcp         *dataplane.TCPServer
+	udp         *dataplane.UDPServer
+	sets        firewall.SetClient
+	control     *control.Server
+	controlPath string
+	controller  *failover.Controller
+	learned     *policy.LearningTable
+	dnsOnly     bool
 }
 
 func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
@@ -64,7 +71,7 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 		cfg.Limits.DNSCacheEntries,
 		3*time.Second,
 	)
-	app := &application{dns: dnsproxy.NewServer(cfg.Listen.DNS, resolver), sets: sets, dnsOnly: dnsOnly}
+	app := &application{dns: dnsproxy.NewServer(cfg.Listen.DNS, resolver), sets: sets, controlPath: cfg.ControlSocket, controller: controller, learned: learner, dnsOnly: dnsOnly}
 	if !dnsOnly {
 		tcpProxy, err := landing.New(cfg.Landing, trustedRoute)
 		if err != nil {
@@ -104,6 +111,12 @@ func (application *application) Run(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+	server, err := control.Listen(application.controlPath, application.snapshot)
+	if err != nil {
+		return fmt.Errorf("start control socket: %w", err)
+	}
+	application.control = server
+	defer server.Close()
 	go application.heartbeat(ctx)
 	for err := range errs {
 		if err != nil {
@@ -111,6 +124,46 @@ func (application *application) Run(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (application *application) snapshot() control.Snapshot {
+	mode := "proxy"
+	connected := true
+	if application.controller != nil {
+		switch application.controller.Mode() {
+		case failover.DirectCooldown:
+			mode, connected = "fail-open", false
+		case failover.DirectRecovery:
+			mode, connected = "recovery", false
+		}
+	}
+	learned := 0
+	if application.learned != nil {
+		learned = len(application.learned.Snapshot(time.Now()))
+	}
+	return control.Snapshot{Mode: mode, HY2Connected: connected, LearnedIPs: learned, RSSBytes: processRSSBytes()}
+}
+
+func processRSSBytes() uint64 {
+	raw, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if !strings.HasPrefix(line, "VmRSS:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			return 0
+		}
+		kilobytes, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			return 0
+		}
+		return kilobytes * 1024
+	}
+	return 0
 }
 
 func (application *application) heartbeat(ctx context.Context) {

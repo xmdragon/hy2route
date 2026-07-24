@@ -69,6 +69,9 @@ func TestValidateCompleteConfig(t *testing.T) {
 	if cfg.Health.ProbeInterval != Duration(10*time.Second) {
 		t.Fatalf("unexpected health probe default: %s", cfg.Health.ProbeInterval.Value())
 	}
+	if cfg.ControlSocket != "/var/run/hy2route-core.sock" {
+		t.Fatalf("unexpected control socket: %q", cfg.ControlSocket)
+	}
 }
 
 func TestValidateRejectsIPv6AndPortCollisions(t *testing.T) {

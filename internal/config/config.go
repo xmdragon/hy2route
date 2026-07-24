@@ -22,18 +22,19 @@ const (
 var namePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 
 type Config struct {
-	Listen      ListenConfig   `json:"listen"`
-	DomesticDNS string         `json:"domestic_dns"`
-	TrustedDNS  string         `json:"trusted_dns"`
-	HY2         HY2Config      `json:"hy2"`
-	Landing     LandingConfig  `json:"landing"`
-	Limits      LimitsConfig   `json:"limits"`
-	Health      HealthConfig   `json:"health"`
-	Firewall    FirewallConfig `json:"firewall"`
-	Rules       []RuleConfig   `json:"rules"`
-	Data        DataConfig     `json:"data"`
-	LogLevel    string         `json:"log_level"`
-	FailOpen    bool           `json:"fail_open"`
+	Listen        ListenConfig   `json:"listen"`
+	DomesticDNS   string         `json:"domestic_dns"`
+	TrustedDNS    string         `json:"trusted_dns"`
+	HY2           HY2Config      `json:"hy2"`
+	Landing       LandingConfig  `json:"landing"`
+	Limits        LimitsConfig   `json:"limits"`
+	Health        HealthConfig   `json:"health"`
+	Firewall      FirewallConfig `json:"firewall"`
+	Rules         []RuleConfig   `json:"rules"`
+	Data          DataConfig     `json:"data"`
+	ControlSocket string         `json:"control_socket"`
+	LogLevel      string         `json:"log_level"`
+	FailOpen      bool           `json:"fail_open"`
 }
 
 type ListenConfig struct {
@@ -116,6 +117,12 @@ func (d *Duration) UnmarshalJSON(raw []byte) error {
 }
 
 func (c *Config) Validate() error {
+	if c.ControlSocket == "" {
+		c.ControlSocket = "/var/run/hy2route-core.sock"
+	}
+	if !strings.HasPrefix(c.ControlSocket, "/") {
+		return errors.New("control_socket must be an absolute path")
+	}
 	if err := validateListen(c.Listen); err != nil {
 		return err
 	}

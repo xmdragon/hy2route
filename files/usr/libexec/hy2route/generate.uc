@@ -376,6 +376,7 @@ function emit_xray() {
 }
 
 function emit_nft() {
+	const nft_priority = canary_source != '' ? ' - 10' : '';
 	let bypass = [
 		'0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
 		'169.254.0.0/16', '172.16.0.0/12', '192.168.0.0/16',
@@ -412,7 +413,7 @@ function emit_nft() {
 	}
 
 	print('\tchain prerouting_mangle {\n');
-	print('\t\ttype filter hook prerouting priority mangle; policy accept;\n');
+	print('\t\ttype filter hook prerouting priority mangle' + nft_priority + '; policy accept;\n');
 	print('\t\tiifname != "' + lan_interface + '" return\n');
 	if (canary_source != '')
 		print('\t\tip saddr != ' + canary_source + ' return\n');
@@ -441,7 +442,7 @@ function emit_nft() {
 	print('\t}\n');
 
 	print('\tchain prerouting_nat {\n');
-	print('\t\ttype nat hook prerouting priority dstnat; policy accept;\n');
+	print('\t\ttype nat hook prerouting priority dstnat' + nft_priority + '; policy accept;\n');
 	print('\t\tiifname != "' + lan_interface + '" return\n');
 	if (canary_source != '') {
 		print('\t\tip saddr != ' + canary_source + ' return\n');
@@ -488,7 +489,7 @@ function emit_core() {
 		limits: { dns_cache_entries: number(main.dns_cache_entries, 4096, 64, 65536, 'dns_cache_entries'), learned_ip_entries: number(main.learned_ip_entries, 16384, 64, 131072, 'learned_ip_entries'), udp_sessions: number(main.udp_sessions, 2048, 64, 65536, 'udp_sessions'), udp_idle: '60s', sniff_bytes: number(main.sniff_bytes, 8192, 1024, 16384, 'sniff_bytes'), sniff_timeout: '250ms' },
 		health: { failure_threshold: 2, success_threshold: 2, cooldown: '30s', probe_interval: '10s' },
 		firewall: { table: text(main.nft_table, 'hy2route'), lan_interface: lan_interface, mark: fwmark, route_table: number(main.route_table, 166, 1, 2147483647, 'route_table'), canary_source: canary_source },
-		rules: rules, data: { routing: '/usr/share/hy2route/routing.bin' }, log_level: log_level == 'warning' ? 'warn' : log_level, fail_open: true
+		rules: rules, data: { routing: '/usr/share/hy2route/routing.bin' }, control_socket: '/var/run/hy2route-core.sock', log_level: log_level == 'warning' ? 'warn' : log_level, fail_open: true
 	};
 	print(sprintf('%J\n', output));
 }
