@@ -153,16 +153,18 @@ func (c *Config) Validate() error {
 }
 
 func validateListen(listen ListenConfig) error {
-	ports := make(map[uint16]struct{}, 3)
+	ports := make(map[uint16]struct{}, 2)
 	for name, endpoint := range map[string]string{"listen.dns": listen.DNS, "listen.tcp": listen.TCP, "listen.udp": listen.UDP} {
 		addr, port, err := parseIPv4Endpoint(endpoint)
 		if err != nil || !addr.Is4() || port == 0 {
 			return fmt.Errorf("%s must be an IPv4 address and port", name)
 		}
-		ports[port] = struct{}{}
+		if name != "listen.udp" {
+			ports[port] = struct{}{}
+		}
 	}
-	if len(ports) != 3 {
-		return errors.New("listen ports must be distinct")
+	if len(ports) != 2 {
+		return errors.New("DNS and TCP listen ports must be distinct")
 	}
 	return nil
 }
