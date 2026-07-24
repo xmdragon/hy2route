@@ -3,155 +3,53 @@
 USE_PROCD=1
 START=99
 STOP=10
-
-PROG=/usr/bin/xray
-CHINADNS=/usr/bin/chinadns-ng
-SUPERVISOR=/usr/libexec/hy2route/run-xray.sh
+PROG=/usr/bin/hy2route-core
 GEN=/usr/libexec/hy2route/generate.uc
 RUNDIR=/tmp/hy2route
 DNSMASQ_SNIPPET=/tmp/dnsmasq.d/hy2route.conf
 RULE_PRIORITY=10066
-
 umask 077
 
-config_value() {
-	uci -q get "hy2route.main.$1"
-}
-
-smart_dns_enabled() {
-	local value
-	value="$(config_value smart_dns)"
-	[ "${value:-1}" = '1' ]
-}
-
-passwall2_running() {
-	ps w | grep -q '[/]tmp/etc/passwall2/'
-}
-
+config_value() { uci -q get "hy2route.main.$1"; }
+passwall2_running() { ps w | grep -q '[/]tmp/etc/passwall2/'; }
 remove_network_rules() {
 	nft list table inet hy2route >/dev/null 2>&1 && nft delete table inet hy2route
 	ip rule del priority "$RULE_PRIORITY" >/dev/null 2>&1 || true
-	local table
-	table="$(config_value route_table)"
-	[ -n "$table" ] && ip route flush table "$table" >/dev/null 2>&1
+	table="$(config_value route_table)"; [ -n "$table" ] && ip route flush table "$table" >/dev/null 2>&1 || true
 }
-
-restore_dnsmasq() {
-	if [ -f "$DNSMASQ_SNIPPET" ]; then
-		rm -f "$DNSMASQ_SNIPPET"
-		/etc/init.d/dnsmasq restart >/dev/null 2>&1
-	fi
-}
-
-probe_chinadns() {
-	local pid probe_error
-	"$CHINADNS" -C "$RUNDIR/chinadns.conf" > "$RUNDIR/chinadns.probe.log" 2>&1 &
-	pid=$!
-	sleep 1
-	if ! kill -0 "$pid" >/dev/null 2>&1; then
-		wait "$pid" 2>/dev/null || true
-		probe_error="$(tail -n 1 "$RUNDIR/chinadns.probe.log" 2>/dev/null)"
-		logger -t hy2route "ChinaDNS startup probe failed: $probe_error"
-		return 1
-	fi
-	kill "$pid" >/dev/null 2>&1 || true
-	wait "$pid" 2>/dev/null || true
-	rm -f "$RUNDIR/chinadns.probe.log"
-}
-
+restore_dnsmasq() { rm -f "$DNSMASQ_SNIPPET"; /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true; }
 prepare_config() {
-	mkdir -p "$RUNDIR" /tmp/dnsmasq.d
-	"$GEN" xray > "$RUNDIR/xray.json" || return 1
-	"$GEN" nft > "$RUNDIR/nft.conf" || return 1
-	"$GEN" dnsmasq > "$RUNDIR/dnsmasq.conf" || return 1
-	if smart_dns_enabled; then
-		[ -x "$CHINADNS" ] || return 1
-		"$GEN" chinadns > "$RUNDIR/chinadns.conf" || return 1
-	else
-		rm -f "$RUNDIR/chinadns.conf"
-	fi
-	XRAY_LOCATION_ASSET=/usr/share/v2ray GOMEMLIMIT=80MiB "$PROG" run -test -c "$RUNDIR/xray.json" >/dev/null || return 1
-	nft -c -f "$RUNDIR/nft.conf" >/dev/null || return 1
+	mkdir -p -m 700 "$RUNDIR" /tmp/dnsmasq.d || return 1
+	"$GEN" core > "$RUNDIR/core.json.new" || return 1
+	"$GEN" nft > "$RUNDIR/nft.conf.new" || return 1
+	"$GEN" dnsmasq > "$RUNDIR/dnsmasq.conf.new" || return 1
+	chmod 600 "$RUNDIR/core.json.new"
+	"$PROG" check --config "$RUNDIR/core.json.new" || return 1
+	nft -c -f "$RUNDIR/nft.conf.new" || return 1
+	mv "$RUNDIR/core.json.new" "$RUNDIR/core.json"
+	mv "$RUNDIR/nft.conf.new" "$RUNDIR/nft.conf"
+	mv "$RUNDIR/dnsmasq.conf.new" "$RUNDIR/dnsmasq.conf"
 }
-
 start_service() {
-	[ "$(config_value enabled)" = '1' ] || return 0
-
-	if passwall2_running; then
-		logger -t hy2route 'Passwall2 is running; refusing to install competing transparent-proxy rules'
-		return 1
-	fi
-
-	prepare_config || {
-		logger -t hy2route 'configuration validation failed'
-		return 1
-	}
-
+	[ "$(config_value enabled)" = 1 ] || return 0
+	if passwall2_running; then logger -t hy2route 'Passwall2 is running; refusing competing rules'; return 1; fi
+	prepare_config || { logger -t hy2route 'core configuration validation failed'; return 1; }
 	remove_network_rules
 	nft -f "$RUNDIR/nft.conf" || return 1
-
-	local mark table
-	mark="$(config_value fwmark)"
-	table="$(config_value route_table)"
-	ip rule add priority "$RULE_PRIORITY" fwmark "$mark" lookup "$table" || {
-		remove_network_rules
-		return 1
-	}
-	ip route add local 0.0.0.0/0 dev lo table "$table" || {
-		remove_network_rules
-		return 1
-	}
-
-	if smart_dns_enabled && ! probe_chinadns; then
-		remove_network_rules
-		return 1
-	fi
-
+	mark="$(config_value fwmark)"; table="$(config_value route_table)"
+	ip rule add priority "$RULE_PRIORITY" fwmark "$mark" lookup "$table" || { remove_network_rules; return 1; }
+	ip route add local 0.0.0.0/0 dev lo table "$table" || { remove_network_rules; return 1; }
 	cp "$RUNDIR/dnsmasq.conf" "$DNSMASQ_SNIPPET"
-	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || {
-		rm -f "$DNSMASQ_SNIPPET"
-		remove_network_rules
-		return 1
-	}
-
-	local test_port
-	test_port="$(config_value test_socks_port)"
-	[ -n "$test_port" ] || test_port=10780
-
-	procd_open_instance xray
-	procd_set_param command "$SUPERVISOR" "$RUNDIR/xray.json" "$test_port"
-	procd_set_param env XRAY_LOCATION_ASSET=/usr/share/v2ray GOMEMLIMIT=80MiB
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || { restore_dnsmasq; remove_network_rules; return 1; }
+	procd_open_instance core
+	procd_set_param command "$PROG" serve --config "$RUNDIR/core.json"
 	procd_set_param respawn 3600 5 5
 	procd_set_param limits nofile='65535 65535'
+	procd_set_param env GOMEMLIMIT=64MiB GOGC=50
 	procd_set_param stdout 0
 	procd_set_param stderr 1
 	procd_close_instance
-
-	if smart_dns_enabled; then
-		procd_open_instance chinadns
-		procd_set_param command "$CHINADNS" -C "$RUNDIR/chinadns.conf"
-		procd_set_param respawn 3600 5 5
-		procd_set_param limits nofile='4096 4096'
-		procd_set_param stdout 0
-		procd_set_param stderr 1
-		procd_close_instance
-	fi
-
-	logger -t hy2route 'started'
 }
-
-stop_service() {
-	restore_dnsmasq
-	remove_network_rules
-	rm -rf "$RUNDIR"
-	logger -t hy2route 'stopped'
-}
-
-reload_service() {
-	stop
-	start
-}
-
-service_triggers() {
-	procd_add_reload_trigger hy2route
-}
+stop_service() { restore_dnsmasq; remove_network_rules; rm -f "$RUNDIR/core.json" "$RUNDIR/nft.conf" "$RUNDIR/dnsmasq.conf" /var/run/hy2route-core.sock; }
+reload_service() { stop; start; }
+service_triggers() { procd_add_reload_trigger hy2route; }
