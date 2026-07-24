@@ -4,12 +4,27 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import hashlib
 import ipaddress
 import pathlib
 import urllib.request
 
 
 APNIC_URL = "https://ftp.apnic.net/stats/apnic/delegated-apnic-latest"
+
+
+def extract_china_prefixes(rows: list[str]) -> list[ipaddress.IPv4Network]:
+    networks: list[ipaddress.IPv4Network] = []
+    for row in rows:
+        fields = row.split("|")
+        if len(fields) < 7 or fields[1:3] != ["CN", "ipv4"]:
+            continue
+        start = ipaddress.IPv4Address(fields[3])
+        count = int(fields[4])
+        end = ipaddress.IPv4Address(int(start) + count - 1)
+        networks.extend(ipaddress.summarize_address_range(start, end))
+    return list(ipaddress.collapse_addresses(networks))
 
 
 def main() -> None:
@@ -20,10 +35,16 @@ def main() -> None:
         default=pathlib.Path(__file__).parents[1]
         / "files/usr/share/hy2route/china4.nft",
     )
+    parser.add_argument(
+        "--text-output",
+        type=pathlib.Path,
+        default=pathlib.Path(__file__).parents[1] / "data/china4.txt",
+    )
     args = parser.parse_args()
 
     with urllib.request.urlopen(APNIC_URL, timeout=30) as response:
-        rows = response.read().decode("ascii").splitlines()
+        raw = response.read()
+    rows = raw.decode("ascii").splitlines()
 
     snapshot_date = "unknown"
     for row in rows:
@@ -36,17 +57,7 @@ def main() -> None:
                 )
             break
 
-    networks: list[ipaddress.IPv4Network] = []
-    for row in rows:
-        fields = row.split("|")
-        if len(fields) < 7 or fields[1:3] != ["CN", "ipv4"]:
-            continue
-        start = ipaddress.IPv4Address(fields[3])
-        count = int(fields[4])
-        end = ipaddress.IPv4Address(int(start) + count - 1)
-        networks.extend(ipaddress.summarize_address_range(start, end))
-
-    collapsed = list(ipaddress.collapse_addresses(networks))
+    collapsed = extract_china_prefixes(rows)
     lines = [
         "# Generated from APNIC delegated-apnic-latest.",
         f"# APNIC snapshot: {snapshot_date}.",
@@ -61,6 +72,15 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="ascii", newline="\n") as output:
         output.write("\n".join(lines) + "\n")
+    args.text_output.parent.mkdir(parents=True, exist_ok=True)
+    metadata = [
+        f"# Source: {APNIC_URL}",
+        f"# Retrieved UTC: {dt.datetime.now(dt.timezone.utc).date().isoformat()}",
+        f"# Source SHA-256: {hashlib.sha256(raw).hexdigest()}",
+        f"# APNIC snapshot: {snapshot_date}",
+    ]
+    with args.text_output.open("w", encoding="ascii", newline="\n") as output:
+        output.write("\n".join([*metadata, *(str(net) for net in collapsed)]) + "\n")
     print(f"wrote {len(collapsed)} collapsed IPv4 prefixes to {args.output}")
 
 
