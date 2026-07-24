@@ -515,6 +515,7 @@ function emit_dnsmasq() {
 		print('nftset=/' + domain + '/4#inet#hy2route#force_proxy4\n');
 
 	print('server=127.0.0.1#' + dns_port + '\n');
+	print('server=' + bootstrap_dns + '\n');
 }
 
 if (mode == 'xray')
