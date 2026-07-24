@@ -14,6 +14,7 @@
 - `www.google.com` DNS returned IPv4 answers through trusted DNS.
 - Google `generate_204`: HTTP 204 in 1.315 s.
 - WeChat HTTPS: HTTP 302 in 0.425 s.
+- UDP DNS check: `wechat.com` 28 ms and `www.google.com` 440 ms, both answered over UDP by `192.168.80.1:53`.
 - Legacy Xray was stopped only after the core checks passed; complete backup remains at `/root/hy2route-backup-20260724-071816-core`.
 - First post-cutover soak sample: RSS `24,432 kB`, high-water `27,036 kB`; nft heartbeat had `8.68 s` remaining from a 10-second lease.
 
