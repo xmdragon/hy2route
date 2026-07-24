@@ -1,10 +1,9 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hy2route
-PKG_VERSION:=0.1.0
-PKG_RELEASE:=13
+PKG_VERSION:=0.2.0
+PKG_RELEASE:=1
 PKG_LICENSE:=MIT
-PKGARCH:=all
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -12,7 +11,7 @@ define Package/hy2route
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Minimal hybrid relay transparent proxy
-  DEPENDS:=+xray-core +nftables-json +kmod-nft-tproxy +ip-full +ucode +ucode-mod-uci +dnsmasq-full +curl +ca-bundle +luci-base
+  DEPENDS:=+nftables-json +kmod-nft-tproxy +ip-full +ucode +ucode-mod-uci +dnsmasq-full +ca-bundle +luci-base
 endef
 
 define Package/hy2route/description
@@ -49,6 +48,7 @@ rm -f /tmp/luci-indexcache
 endef
 
 define Build/Compile
+	$(CURDIR)/tools/build-core.sh
 endef
 
 define Package/hy2route/install
@@ -57,6 +57,7 @@ define Package/hy2route/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/hy2route $(1)/etc/init.d/hy2route
 	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) ./build/hy2route-core $(1)/usr/bin/hy2route-core
 	$(INSTALL_BIN) ./files/usr/bin/hy2route $(1)/usr/bin/hy2route
 	$(INSTALL_DIR) $(1)/etc/sysctl.d
 	$(INSTALL_DATA) ./files/etc/sysctl.d/90-hy2route.conf $(1)/etc/sysctl.d/90-hy2route.conf
@@ -64,6 +65,7 @@ define Package/hy2route/install
 	$(INSTALL_BIN) ./files/usr/libexec/hy2route/generate.uc $(1)/usr/libexec/hy2route/generate.uc
 	$(INSTALL_BIN) ./files/usr/libexec/hy2route/run-xray.sh $(1)/usr/libexec/hy2route/run-xray.sh
 	$(INSTALL_DIR) $(1)/usr/share/hy2route
+	$(INSTALL_DATA) ./build/hy2route-data.bin $(1)/usr/share/hy2route/routing.bin
 	$(INSTALL_DATA) ./files/usr/share/hy2route/china4.nft $(1)/usr/share/hy2route/china4.nft
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./files/usr/share/luci/menu.d/luci-app-hy2route.json $(1)/usr/share/luci/menu.d/luci-app-hy2route.json
