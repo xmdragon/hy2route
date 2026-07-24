@@ -23,7 +23,7 @@
 
 **Files:**
 - Create: `go.mod`
-- Create: `go.sum`
+- Create when the first dependency is imported: `go.sum`
 - Create: `cmd/hy2route-core/main.go`
 - Create: `internal/buildinfo/buildinfo.go`
 - Create: `internal/buildinfo/buildinfo_test.go`
@@ -146,7 +146,7 @@ Expected: tests PASS; `file` reports an ARM aarch64 statically linked executable
 - [ ] **Step 5: Commit**
 
 ```bash
-git add go.mod go.sum cmd/hy2route-core internal/buildinfo tests/test_go_core_contract.sh
+git add go.mod cmd/hy2route-core internal/buildinfo tests/test_go_core_contract.sh
 git commit -m "feat: bootstrap hy2route core module"
 ```
 
