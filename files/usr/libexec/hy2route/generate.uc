@@ -397,6 +397,9 @@ function emit_nft() {
 	if (length(direct_ips))
 		print('\t\telements = { ' + nft_join(direct_ips) + ' }\n');
 	print('\t}\n');
+	print('\tset direct4 {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t}\n');
+	print('\tset inspect4 {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t}\n');
+	print('\tmap core_state {\n\t\ttype integer : verdict\n\t\tflags timeout\n\t}\n');
 	if (block_ipv6) {
 		print('\tchain block_forward_ipv6 {\n');
 		print('\t\ttype filter hook forward priority -1; policy accept;\n');
@@ -407,17 +410,23 @@ function emit_nft() {
 	print('\tchain prerouting_mangle {\n');
 	print('\t\ttype filter hook prerouting priority mangle; policy accept;\n');
 	print('\t\tiifname != "' + lan_interface + '" return\n');
+	print('\t\tfib daddr type local return\n');
+	print('\t\t1 vmap @core_state\n');
+	print('\t\treturn\n');
+	print('\t}\n');
+	print('\tchain active {\n');
 	print('\t\tmeta nfproto != ipv4 return\n');
 	print('\t\tip daddr @bypass4 return\n');
+	print('\t\tip daddr @force_proxy4 meta l4proto tcp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
 	print('\t\tip daddr @force_proxy4 meta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
 	print('\t\tip daddr @force_direct4 return\n');
+	print('\t\tip daddr { 10.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } return\n');
+	print('\t\tip daddr @inspect4 meta l4proto tcp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
+	print('\t\tip daddr @inspect4 meta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
+	print('\t\tip daddr @direct4 return\n');
 	print('\t\tip daddr @china4 return\n');
-	if (udp_policy == 'proxy')
-		print('\t\tmeta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
-	else if (udp_policy == 'block')
-		print('\t\tmeta l4proto udp drop\n');
-	else
-		print('\t\tmeta l4proto udp return\n');
+	print('\t\tmeta l4proto tcp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
+	print('\t\tmeta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
 	print('\t}\n');
 
 	print('\tchain prerouting_nat {\n');

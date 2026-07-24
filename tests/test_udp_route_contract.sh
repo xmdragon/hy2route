@@ -42,12 +42,7 @@ require_block "push(route_rules, {
 	});"
 require_literal "settings: { auth: 'noauth', udp: true }"
 require_literal "ip daddr @force_proxy4 meta l4proto udp tproxy"
-require_block "if (udp_policy == 'proxy')
-		print('\\t\\tmeta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\\n');
-	else if (udp_policy == 'block')
-		print('\\t\\tmeta l4proto udp drop\\n');
-	else
-		print('\\t\\tmeta l4proto udp return\\n');"
+require_literal "ip daddr @inspect4 meta l4proto udp tproxy"
 reject_literal "inboundTag: [ 'tcp-redirect', 'udp-tproxy', 'test-socks' ]"
 reject_literal "HTTP landing cannot carry UDP"
 reject_literal "landing_type == 'socks' && udp_policy == 'proxy'"
@@ -60,11 +55,11 @@ line_number() {
 force_proxy_line="$(line_number 'ip daddr @force_proxy4 meta l4proto udp tproxy')"
 force_direct_line="$(line_number 'ip daddr @force_direct4 return')"
 china_line="$(line_number 'ip daddr @china4 return')"
-policy_line="$(line_number "if (udp_policy == 'proxy')")"
+inspect_line="$(line_number 'ip daddr @inspect4 meta l4proto udp tproxy')"
 
 if [ "$force_proxy_line" -ge "$force_direct_line" ] ||
-	[ "$force_direct_line" -ge "$china_line" ] ||
-	[ "$china_line" -ge "$policy_line" ]; then
-	echo 'invalid nft UDP rule order: force proxy, force direct, China bypass, policy' >&2
+	[ "$force_direct_line" -ge "$inspect_line" ] ||
+	[ "$inspect_line" -ge "$china_line" ]; then
+	echo 'invalid nft UDP rule order: force proxy, force direct, inspect, China bypass' >&2
 	exit 1
 fi
