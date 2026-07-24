@@ -1,56 +1,24 @@
 #!/bin/sh
-
+set -eu
 GEN=/usr/libexec/hy2route/generate.uc
-CHINADNS=/usr/bin/chinadns-ng
+PROG=/usr/bin/hy2route-core
 RUNDIR=/tmp/hy2route
-
 umask 077
-
-usage() {
-	echo 'usage: hy2route <check|status|test>' >&2
-	exit 2
-}
-
-case "$1" in
+usage() { echo 'usage: hy2route <check|status|test|reload>' >&2; exit 2; }
+case "${1:-}" in
 	check)
-		mkdir -p "$RUNDIR"
-		"$GEN" xray > "$RUNDIR/xray.check.json" || exit 1
-		"$GEN" nft > "$RUNDIR/nft.check.conf" || exit 1
-		smart_dns="$(uci -q get hy2route.main.smart_dns)"
-		[ -n "$smart_dns" ] || smart_dns=1
-		if [ "$smart_dns" = '1' ]; then
-			[ -x "$CHINADNS" ] || {
-				echo "missing executable: $CHINADNS" >&2
-				exit 1
-			}
-			"$GEN" chinadns > "$RUNDIR/chinadns.check.conf" || exit 1
-			"$CHINADNS" --version >/dev/null || exit 1
-		fi
-		XRAY_LOCATION_ASSET=/usr/share/v2ray xray run -test -c "$RUNDIR/xray.check.json" || exit 1
-		nft -c -f "$RUNDIR/nft.check.conf" || exit 1
+		mkdir -p -m 700 "$RUNDIR"
+		"$GEN" core > "$RUNDIR/core.check.json"
+		chmod 600 "$RUNDIR/core.check.json"
+		"$PROG" check --config "$RUNDIR/core.check.json"
+		"$GEN" nft > "$RUNDIR/nft.check.conf"
+		nft -c -f "$RUNDIR/nft.check.conf"
 		echo 'hy2route configuration is valid'
 		;;
 	status)
-		smart_dns="$(uci -q get hy2route.main.smart_dns)"
-		[ -n "$smart_dns" ] || smart_dns=1
-		if nft list table inet hy2route >/dev/null 2>&1 &&
-			ps w | grep -q '[x]ray run -c /tmp/hy2route/xray.json' &&
-			{ [ "$smart_dns" != '1' ] ||
-				ps w | grep -q '[c]hinadns-ng -C /tmp/hy2route/chinadns.conf'; }; then
-			echo 'hy2route is running'
-		else
-			echo 'hy2route is stopped'
-			exit 1
-		fi
+		if pgrep -f '[h]y2route-core serve --config /tmp/hy2route/core.json' >/dev/null 2>&1; then echo 'hy2route core is running'; else echo 'hy2route core is stopped'; exit 1; fi
 		;;
-	test)
-		port="$(uci -q get hy2route.main.test_socks_port)"
-		[ -n "$port" ] || port=10780
-		curl -fsS --max-time 15 --socks5-hostname "127.0.0.1:$port" \
-			-o /dev/null -w 'HTTP %{http_code}, connect %{time_connect}s, total %{time_total}s\n' \
-			https://www.gstatic.com/generate_204
-		;;
-	*)
-		usage
-		;;
+	test) "$PROG" check --config "$RUNDIR/core.json" ;;
+	reload) /etc/init.d/hy2route reload ;;
+	*) usage ;;
 esac
