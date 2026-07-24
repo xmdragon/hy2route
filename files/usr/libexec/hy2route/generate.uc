@@ -415,6 +415,8 @@ function emit_nft() {
 	print('\tchain prerouting_mangle {\n');
 	print('\t\ttype filter hook prerouting priority mangle' + nft_priority + '; policy accept;\n');
 	print('\t\tiifname != "' + lan_interface + '" return\n');
+	if (canary_source == '')
+		print('\t\tmeta mark 103 return\n');
 	if (canary_source != '')
 		print('\t\tip saddr != ' + canary_source + ' return\n');
 	print('\t\tfib daddr type local return\n');

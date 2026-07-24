@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -56,7 +57,9 @@ func Listen(path string, snapshot func() Snapshot) (*Server, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
+	oldUmask := syscall.Umask(0o077)
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	syscall.Umask(oldUmask)
 	if err != nil {
 		return nil, err
 	}

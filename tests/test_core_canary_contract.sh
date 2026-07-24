@@ -8,7 +8,7 @@ sh -n "$deploy" "$rollback"
 "$deploy" --dry-run --router 192.168.80.1 --client 192.168.80.20 | grep -Fq 'table=hy2route_canary'
 "$rollback" --dry-run --backup /root/hy2route-backup-20000101-000000-core | grep -Fq 'restore-or-remove run-xray.sh'
 
-for literal in 'sha256sum' 'local_generator' 'canary_source' 'trap cleanup' 'nft list table inet hy2route_canary' 'GOMEMLIMIT=64MiB' 'ssh "root@$router"' '[ ! -e "$backup" ]'; do
+for literal in 'sha256sum' 'local_generator' 'canary_source' 'trap cleanup' 'nft list table inet hy2route_canary' 'GOMEMLIMIT=64MiB' 'ssh "root@$router"' '[ ! -e "$backup" ]' 'preflight_backup' 'SSH_CONNECTION' 'fwmark=103' 'hy2route-core-canary-guard'; do
 	grep -Fq "$literal" "$deploy"
 done
 

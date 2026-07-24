@@ -128,7 +128,7 @@ func (application *application) Run(ctx context.Context) error {
 
 func (application *application) snapshot() control.Snapshot {
 	mode := "proxy"
-	connected := true
+	connected := false
 	if application.controller != nil {
 		switch application.controller.Mode() {
 		case failover.DirectCooldown:
