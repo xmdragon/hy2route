@@ -12,5 +12,6 @@ test "$direct" -lt "$inspect"
 test "$inspect" -lt "$learned"
 test "$learned" -lt "$china"
 grep -Fq 'fib daddr type local return' "$g"
-grep -Fq '1 vmap @core_state' "$g"
+grep -Fq 'meta mark set 1' "$g"
+grep -Fq 'meta mark vmap @core_state' "$g"
 echo 'core nft contract passed'

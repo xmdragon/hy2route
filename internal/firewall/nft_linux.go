@@ -4,13 +4,13 @@ package firewall
 
 import (
 	"context"
-	"encoding/binary"
+	"fmt"
 	"net/netip"
+	"os/exec"
 	"sync"
 	"time"
 
 	"github.com/google/nftables"
-	"github.com/google/nftables/expr"
 )
 
 type NftSetClient struct {
@@ -68,14 +68,9 @@ func (c *NftSetClient) Heartbeat(ctx context.Context, ttl time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	n, err := nftables.New()
-	if err != nil {
-		return err
+	command := exec.CommandContext(ctx, "nft", fmt.Sprintf("add element inet %s core_state { 0x00000001 timeout %s : jump active }", c.table.Name, clampTTL(ttl)))
+	if output, err := command.CombinedOutput(); err != nil {
+		return fmt.Errorf("nft heartbeat: %w: %s", err, output)
 	}
-	k := make([]byte, 4)
-	binary.BigEndian.PutUint32(k, 1)
-	if err := n.SetAddElements(c.core, []nftables.SetElement{{Key: k, VerdictData: &expr.Verdict{Kind: expr.VerdictJump, Chain: "active"}, Timeout: clampTTL(ttl)}}); err != nil {
-		return err
-	}
-	return n.Flush()
+	return nil
 }

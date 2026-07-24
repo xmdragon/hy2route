@@ -101,6 +101,7 @@ const block_ipv6 = boolean(main.block_ipv6, true);
 const congestion = text(relay.congestion, 'bbr');
 const bbr_profile = text(relay.bbr_profile, 'standard');
 const canary_source = text(main.canary_source, '');
+const nft_table = text(main.nft_table, 'hy2route');
 
 if (!valid_host(relay_server) || !valid_host(landing_server))
 	fail('relay and landing server values may contain only letters, digits, dot, colon, underscore and dash');
@@ -387,7 +388,7 @@ function emit_nft() {
 	if (tcp_relay_enabled && is_ipv4(tcp_relay_server))
 		push(bypass, tcp_relay_server);
 
-	print('table inet hy2route {\n');
+	print('table inet ' + nft_table + ' {\n');
 	print('\tset bypass4 {\n\t\ttype ipv4_addr\n\t\tflags interval\n\t\tauto-merge\n');
 	print('\t\telements = { ' + nft_join(bypass) + ' }\n\t}\n');
 	print('\tset china4 {\n\t\ttype ipv4_addr\n\t\tflags interval\n\t\tauto-merge\n\t}\n');
@@ -416,12 +417,17 @@ function emit_nft() {
 	if (canary_source != '')
 		print('\t\tip saddr != ' + canary_source + ' return\n');
 	print('\t\tfib daddr type local return\n');
-	print('\t\t1 vmap @core_state\n');
+	print('\t\tmeta mark set 1\n');
+	print('\t\tmeta mark vmap @core_state\n');
 	print('\t\treturn\n');
 	print('\t}\n');
 	print('\tchain active {\n');
 	print('\t\tmeta nfproto != ipv4 return\n');
 	print('\t\tip daddr @bypass4 return\n');
+	if (canary_source != '') {
+		print('\t\tudp dport 53 return\n');
+		print('\t\ttcp dport 53 return\n');
+	}
 	print('\t\tip daddr @force_proxy4 meta l4proto tcp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
 	print('\t\tip daddr @force_proxy4 meta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
 	print('\t\tip daddr @force_direct4 return\n');
@@ -437,6 +443,11 @@ function emit_nft() {
 	print('\tchain prerouting_nat {\n');
 	print('\t\ttype nat hook prerouting priority dstnat; policy accept;\n');
 	print('\t\tiifname != "' + lan_interface + '" return\n');
+	if (canary_source != '') {
+		print('\t\tip saddr != ' + canary_source + ' return\n');
+		print('\t\tudp dport 53 redirect to :' + dns_port + '\n');
+		print('\t\ttcp dport 53 redirect to :' + dns_port + '\n');
+	}
 	print('\t\tmeta nfproto != ipv4 return\n');
 	print('\t\tmeta l4proto != tcp return\n');
 	print('\t\tip daddr @bypass4 return\n');
@@ -463,13 +474,14 @@ function emit_chinadns() {
 
 function emit_core() {
 	let landing_mode = landing_type == 'socks' ? 'socks5' : landing_type;
+	let dns_listen = canary_source == '' ? '127.0.0.1:' + dns_port : '0.0.0.0:' + dns_port;
 	let rules = [];
 	for (let domain in direct_domains) push(rules, { action: 'direct', type: 'domain', value: domain });
 	for (let domain in proxy_domains) push(rules, { action: 'proxy', type: 'domain', value: domain });
 	for (let ip in direct_ips) push(rules, { action: 'direct', type: 'ip', value: ip });
 	for (let ip in proxy_ips) push(rules, { action: 'proxy', type: 'ip', value: ip });
 	let output = {
-		listen: { dns: '127.0.0.1:' + dns_port, tcp: '0.0.0.0:' + transparent_port, udp: '0.0.0.0:' + transparent_port },
+		listen: { dns: dns_listen, tcp: '0.0.0.0:' + transparent_port, udp: '0.0.0.0:' + transparent_port },
 		domestic_dns: bootstrap_dns + ':53', trusted_dns: remote_dns + ':53',
 		hy2: { server: relay_server + ':' + text(relay.port, '443'), auth: text(relay.auth, ''), sni: text(relay.sni, relay_server), insecure: boolean(relay.allow_insecure, false), pinned_cert_sha256: text(relay.pinned_cert_sha256, ''), max_idle: '60s', keep_alive: '10s', max_concurrent_dials: 32 },
 		landing: { type: landing_mode, server: landing_mode == 'direct' ? '' : landing_server + ':' + text(landing.port, '443'), username: landing_mode == 'direct' ? '' : text(landing.username, ''), password: landing_mode == 'direct' ? '' : text(landing.password, '') },

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -52,7 +53,7 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 	}, nil)
 	trustedRoute := transport.NewFailOpenWithProbe(hy2Client, direct, controller, nil, cfg.Health.ProbeInterval.Value())
 	trusted := transport.NewDNSFallback(
-		transport.NewDNSOverStream(trustedRoute, cfg.TrustedDNS, cfg.Limits.SniffTimeout.Value()),
+		transport.NewDNSOverStream(trustedRoute, cfg.TrustedDNS, 2*time.Second),
 		domestic,
 	)
 	resolver := dnsproxy.NewResolver(
@@ -61,7 +62,7 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 		trusted,
 		learningAdapter{table: learner, firewall: firewall.NewLearner(learner, sets, nil)},
 		cfg.Limits.DNSCacheEntries,
-		cfg.Limits.SniffTimeout.Value(),
+		3*time.Second,
 	)
 	app := &application{dns: dnsproxy.NewServer(cfg.Listen.DNS, resolver), sets: sets, dnsOnly: dnsOnly}
 	if !dnsOnly {
@@ -116,7 +117,8 @@ func (application *application) heartbeat(ctx context.Context) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for {
-		if application.sets.Heartbeat(ctx, 10*time.Second) != nil {
+		if err := application.sets.Heartbeat(ctx, 10*time.Second); err != nil {
+			fmt.Fprintf(os.Stderr, "stage=firewall-heartbeat error=%v\n", err)
 			return
 		}
 		select {
