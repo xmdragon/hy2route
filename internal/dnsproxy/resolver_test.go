@@ -173,3 +173,17 @@ func TestCacheReturnsIndependentResponses(t *testing.T) {
 		t.Fatalf("response=%#v calls=%d", second, domestic.calls)
 	}
 }
+
+func TestResolverPreservesClientTransactionID(t *testing.T) {
+	resolver, domestic, _, _ := resolverFixture(t)
+	domestic.reply = aReply("wechat.com.", "120.233.109.151")
+	request := aQuestion("wechat.com.")
+	request.Id = 4242
+	response, err := resolver.Resolve(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Id != request.Id {
+		t.Fatalf("response ID = %d, want %d", response.Id, request.Id)
+	}
+}

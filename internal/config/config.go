@@ -93,8 +93,7 @@ type RuleConfig struct {
 }
 
 type DataConfig struct {
-	Domains string `json:"domains"`
-	IPv4    string `json:"ipv4"`
+	Routing string `json:"routing"`
 }
 
 type Duration time.Duration
@@ -142,8 +141,8 @@ func (c *Config) Validate() error {
 	if err := validateRules(c.Rules); err != nil {
 		return err
 	}
-	if strings.TrimSpace(c.Data.Domains) == "" || strings.TrimSpace(c.Data.IPv4) == "" {
-		return errors.New("data paths are required")
+	if strings.TrimSpace(c.Data.Routing) == "" {
+		return errors.New("data routing path is required")
 	}
 	if c.LogLevel != "" && c.LogLevel != "debug" && c.LogLevel != "info" && c.LogLevel != "warn" && c.LogLevel != "error" {
 		return errors.New("log_level must be debug, info, warn, or error")

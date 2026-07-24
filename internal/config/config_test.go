@@ -45,8 +45,7 @@ func validConfig() Config {
 			RouteTable:   100,
 		},
 		Data: DataConfig{
-			Domains: "/usr/share/hy2route/china-domains.bin",
-			IPv4:    "/usr/share/hy2route/china4.bin",
+			Routing: "/usr/share/hy2route/routing.bin",
 		},
 		LogLevel: "info",
 		FailOpen: true,
@@ -89,7 +88,7 @@ func TestDecodeRejectsUnknownAndNumericDuration(t *testing.T) {
 		"limits":{"dns_cache_entries":256,"learned_ip_entries":512,"udp_sessions":256,"udp_idle":"60s","sniff_bytes":4096,"sniff_timeout":"250ms"},
 		"health":{"failure_threshold":2,"success_threshold":2,"cooldown":"30s"},
 		"firewall":{"table":"hy2route","lan_interface":"br-lan","mark":102,"route_table":100},
-		"data":{"domains":"/domains","ipv4":"/ipv4"},"unknown":true
+		"data":{"routing":"/routing.bin"},"unknown":true
 	}`)
 	_, err := Decode(raw)
 	if err == nil || (!strings.Contains(err.Error(), "unknown") && !strings.Contains(err.Error(), "duration")) {
@@ -115,7 +114,7 @@ func TestLoadReadsAndValidatesFile(t *testing.T) {
 		"limits":{"dns_cache_entries":256,"learned_ip_entries":512,"udp_sessions":256,"udp_idle":"60s","sniff_bytes":4096,"sniff_timeout":"250ms"},
 		"health":{"failure_threshold":2,"success_threshold":2,"cooldown":"30s"},
 		"firewall":{"table":"hy2route","lan_interface":"br-lan","mark":102,"route_table":100},
-		"data":{"domains":"/domains","ipv4":"/ipv4"},"log_level":"info","fail_open":true
+		"data":{"routing":"/routing.bin"},"log_level":"info","fail_open":true
 	}`)
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)

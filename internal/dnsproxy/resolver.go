@@ -50,6 +50,8 @@ func (resolver *Resolver) Resolve(ctx context.Context, request *dns.Msg) (*dns.M
 		return errorReply(request, dns.RcodeSuccess), nil
 	}
 	if response, ok := resolver.cache.Get(question.Name, question.Qtype, resolver.now()); ok {
+		response.Id = request.Id
+		response.Question = append(response.Question[:0], request.Question...)
 		return response, nil
 	}
 	if resolver.classifier == nil || resolver.domestic == nil || resolver.trusted == nil {
@@ -78,6 +80,8 @@ func (resolver *Resolver) Resolve(ctx context.Context, request *dns.Msg) (*dns.M
 	if response == nil {
 		return nil, errors.New("DNS upstream returned no response")
 	}
+	response.Id = request.Id
+	response.Question = append(response.Question[:0], request.Question...)
 	resolver.learn(ctx, decision.Domain, decision.Action, response)
 	resolver.cacheResponse(question, response)
 	return response.Copy(), nil

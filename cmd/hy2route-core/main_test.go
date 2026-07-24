@@ -2,10 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/xmdragon/hy2route/internal/config"
+	"github.com/xmdragon/hy2route/internal/dataset"
 )
 
 func TestRunCheckValidatesConfig(t *testing.T) {
@@ -18,7 +23,7 @@ func TestRunCheckValidatesConfig(t *testing.T) {
 		"limits":{"dns_cache_entries":256,"learned_ip_entries":512,"udp_sessions":256,"udp_idle":"60s","sniff_bytes":4096,"sniff_timeout":"250ms"},
 		"health":{"failure_threshold":2,"success_threshold":2,"cooldown":"30s"},
 		"firewall":{"table":"hy2route","lan_interface":"br-lan","mark":102,"route_table":100},
-		"data":{"domains":"/domains","ipv4":"/ipv4"},"log_level":"info","fail_open":true
+		"data":{"routing":"/routing.bin"},"log_level":"info","fail_open":true
 	}`)
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
@@ -43,5 +48,54 @@ func TestRunCheckRedactsSecret(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "TOP-SECRET") {
 		t.Fatalf("secret leaked: %s", stderr.String())
+	}
+}
+
+func TestRunServeLoadsConfiguration(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"serve", "--dns-only", "--config", "/does-not-exist"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "configuration invalid") {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+}
+
+func TestNewApplicationBuildsDNSService(t *testing.T) {
+	dataPath := filepath.Join(t.TempDir(), "routing.bin")
+	file, err := os.Create(dataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dataset.Write(file, dataset.Data{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{
+		Listen:      config.ListenConfig{DNS: "127.0.0.1:0"},
+		DomesticDNS: "127.0.0.1:53",
+		TrustedDNS:  "127.0.0.1:53",
+		Limits:      config.LimitsConfig{DNSCacheEntries: 64, LearnedIPEntries: 64},
+		Data:        config.DataConfig{Routing: dataPath},
+	}
+	app, err := newApplication(cfg, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- app.Run(ctx) }()
+	deadline := time.Now().Add(time.Second)
+	for app.dns.Addr() == "" && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if app.dns.Addr() == "" {
+		t.Fatal("application did not start DNS")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }

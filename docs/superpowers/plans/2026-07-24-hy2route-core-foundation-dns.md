@@ -281,8 +281,7 @@ type RuleConfig struct {
 }
 
 type DataConfig struct {
-	Domains string `json:"domains"`
-	IPv4    string `json:"ipv4"`
+	Routing string `json:"routing"`
 }
 ```
 
@@ -307,6 +306,7 @@ var validLanding = map[string]bool{"direct": true, "http": true, "socks5": true}
 //   UDP idle 2s..600s, sniff bytes 1024..16384, sniff timeout 10ms..2s;
 // - health thresholds are 1..10 and cooldown is 5s..15m;
 // - landing credentials are permitted only for http/socks5;
+// - data.routing identifies the single compiled routing snapshot;
 // - rules are direct/proxy plus domain or IPv4/CIDR.
 ```
 
@@ -713,7 +713,8 @@ Run:
 
 ```bash
 GOTOOLCHAIN=go1.25.12 go test -race ./internal/dnsproxy -count=10
-GOTOOLCHAIN=go1.25.12 go test ./internal/dnsproxy -run '^$' -fuzz FuzzResolverNeverPanics -fuzztime 20s
+GOMAXPROCS=1 GOTOOLCHAIN=go1.25.12 go test ./internal/dnsproxy -run '^$' \
+	-fuzz FuzzResolverNeverPanics -fuzztime 20s -parallel=1
 ```
 
 Expected: PASS, no panic, race or unbounded cache length.
@@ -810,8 +811,8 @@ Run:
 GOTOOLCHAIN=go1.25.12 gofmt -w cmd internal
 GOTOOLCHAIN=go1.25.12 go vet ./...
 GOTOOLCHAIN=go1.25.12 go test -race ./...
-GOTOOLCHAIN=go1.25.12 go test ./internal/dnsproxy -run '^$' \
-	-fuzz FuzzResolverNeverPanics -fuzztime 20s
+GOMAXPROCS=1 GOTOOLCHAIN=go1.25.12 go test ./internal/dnsproxy -run '^$' \
+	-fuzz FuzzResolverNeverPanics -fuzztime 20s -parallel=1
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOARM64=v8.0 \
 	GOTOOLCHAIN=go1.25.12 go build -trimpath \
 	-ldflags="-s -w -X github.com/xmdragon/hy2route/internal/buildinfo.Commit=$(git rev-parse --short HEAD)" \
