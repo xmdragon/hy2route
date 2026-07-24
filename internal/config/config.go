@@ -77,6 +77,7 @@ type HealthConfig struct {
 	FailureThreshold int      `json:"failure_threshold"`
 	SuccessThreshold int      `json:"success_threshold"`
 	Cooldown         Duration `json:"cooldown"`
+	ProbeInterval    Duration `json:"probe_interval"`
 }
 
 type FirewallConfig struct {
@@ -268,8 +269,11 @@ func (c Config) validateLimits() error {
 	return nil
 }
 
-func (c Config) validateHealth() error {
-	if !betweenInt(c.Health.FailureThreshold, 1, 10) || !betweenInt(c.Health.SuccessThreshold, 1, 10) || !between(c.Health.Cooldown.Value(), 5*time.Second, 15*time.Minute) {
+func (c *Config) validateHealth() error {
+	if c.Health.ProbeInterval == 0 {
+		c.Health.ProbeInterval = Duration(10 * time.Second)
+	}
+	if !betweenInt(c.Health.FailureThreshold, 1, 10) || !betweenInt(c.Health.SuccessThreshold, 1, 10) || !between(c.Health.Cooldown.Value(), 5*time.Second, 15*time.Minute) || !between(c.Health.ProbeInterval.Value(), time.Second, 5*time.Minute) {
 		return errors.New("health settings are out of range")
 	}
 	return nil

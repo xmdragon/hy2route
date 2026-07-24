@@ -40,6 +40,9 @@ func New(cfg config.HY2Config, bootstrap BootstrapResolver, events transport.Eve
 	if events == nil {
 		events = discardEvents{}
 	}
+	if cfg.MaxConcurrentDials < 1 {
+		cfg.MaxConcurrentDials = 32
+	}
 	core, err := coreclient.NewReconnectableClient(func() (*coreclient.Config, error) {
 		return buildCoreConfig(context.Background(), cfg, bootstrap)
 	}, func(_ coreclient.Client, _ *coreclient.HandshakeInfo, _ int) {

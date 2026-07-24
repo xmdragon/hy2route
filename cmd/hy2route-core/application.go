@@ -8,7 +8,10 @@ import (
 	"github.com/xmdragon/hy2route/internal/config"
 	"github.com/xmdragon/hy2route/internal/dataset"
 	"github.com/xmdragon/hy2route/internal/dnsproxy"
+	"github.com/xmdragon/hy2route/internal/failover"
 	"github.com/xmdragon/hy2route/internal/policy"
+	"github.com/xmdragon/hy2route/internal/transport"
+	"github.com/xmdragon/hy2route/internal/transport/hy2"
 )
 
 type application struct {
@@ -28,10 +31,26 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 		return nil, fmt.Errorf("build classifier: %w", err)
 	}
 	learner := policy.NewLearningTable(cfg.Limits.LearnedIPEntries)
+	domestic := dnsproxy.NewNetworkExchanger(cfg.DomesticDNS)
+	hy2Client, err := hy2.New(cfg.HY2, hy2.NewBootstrapResolver(domestic), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build HY2 transport: %w", err)
+	}
+	direct := transport.NewDirectStreamDialer()
+	controller := failover.New(failover.Config{
+		Failures:  cfg.Health.FailureThreshold,
+		Successes: cfg.Health.SuccessThreshold,
+		Cooldown:  cfg.Health.Cooldown.Value(),
+	}, nil)
+	trustedRoute := transport.NewFailOpenWithProbe(hy2Client, direct, controller, nil, cfg.Health.ProbeInterval.Value())
+	trusted := transport.NewDNSFallback(
+		transport.NewDNSOverStream(trustedRoute, cfg.TrustedDNS, cfg.Limits.SniffTimeout.Value()),
+		domestic,
+	)
 	resolver := dnsproxy.NewResolver(
 		classifier,
-		dnsproxy.NewNetworkExchanger(cfg.DomesticDNS),
-		dnsproxy.NewNetworkExchanger(cfg.TrustedDNS),
+		domestic,
+		trusted,
 		learningAdapter{table: learner},
 		cfg.Limits.DNSCacheEntries,
 		cfg.Limits.SniffTimeout.Value(),

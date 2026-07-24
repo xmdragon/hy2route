@@ -66,6 +66,9 @@ func TestValidateCompleteConfig(t *testing.T) {
 	if cfg.HY2.MaxConcurrentDials != 32 {
 		t.Fatalf("unexpected HY2 dial default: %d", cfg.HY2.MaxConcurrentDials)
 	}
+	if cfg.Health.ProbeInterval != Duration(10*time.Second) {
+		t.Fatalf("unexpected health probe default: %s", cfg.Health.ProbeInterval.Value())
+	}
 }
 
 func TestValidateRejectsIPv6AndPortCollisions(t *testing.T) {
