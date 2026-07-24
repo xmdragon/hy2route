@@ -85,6 +85,7 @@ type FirewallConfig struct {
 	Table        string `json:"table"`
 	LANInterface string `json:"lan_interface"`
 	Mark         uint32 `json:"mark"`
+	BypassMark   uint32 `json:"bypass_mark"`
 	RouteTable   uint32 `json:"route_table"`
 	CanarySource string `json:"canary_source,omitempty"`
 }
@@ -143,6 +144,12 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateHealth(); err != nil {
 		return err
+	}
+	if c.Firewall.BypassMark == 0 {
+		if c.Firewall.Mark == ^uint32(0) {
+			return errors.New("firewall mark leaves no bypass mark")
+		}
+		c.Firewall.BypassMark = c.Firewall.Mark + 1
 	}
 	if err := c.validateFirewall(); err != nil {
 		return err
@@ -294,6 +301,9 @@ func (c Config) validateFirewall() error {
 	}
 	if c.Firewall.Mark == 0 || c.Firewall.RouteTable == 0 {
 		return errors.New("firewall mark and route_table must be non-zero")
+	}
+	if c.Firewall.BypassMark == c.Firewall.Mark {
+		return errors.New("firewall bypass_mark must differ from mark")
 	}
 	if c.Firewall.CanarySource == "" {
 		return nil

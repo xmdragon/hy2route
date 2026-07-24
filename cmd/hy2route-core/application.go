@@ -46,13 +46,13 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 	}
 	learner := policy.NewLearningTable(cfg.Limits.LearnedIPEntries)
 	sets := firewall.NewNftSetClient(cfg.Firewall.Table)
-	domestic := dnsproxy.NewNetworkExchanger(cfg.DomesticDNS)
-	hy2Client, err := hy2.New(cfg.HY2, hy2.NewBootstrapResolver(domestic), nil)
+	domestic := dnsproxy.NewNetworkExchanger(cfg.DomesticDNS, cfg.Firewall.BypassMark)
+	hy2Client, err := hy2.New(cfg.HY2, hy2.NewBootstrapResolver(domestic), nil, cfg.Firewall.BypassMark)
 	if err != nil {
 		return nil, fmt.Errorf("build HY2 transport: %w", err)
 	}
-	direct := transport.NewDirectStreamDialer()
-	directPacket := transport.NewDirectPacketDialer()
+	direct := transport.NewDirectStreamDialer(cfg.Firewall.BypassMark)
+	directPacket := transport.NewDirectPacketDialer(cfg.Firewall.BypassMark)
 	controller := failover.New(failover.Config{
 		Failures:  cfg.Health.FailureThreshold,
 		Successes: cfg.Health.SuccessThreshold,

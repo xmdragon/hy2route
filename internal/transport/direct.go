@@ -2,40 +2,53 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"net"
 )
 
 type directStreamDialer struct {
-	dialer net.Dialer
+	dialer *net.Dialer
 }
 
-func NewDirectStreamDialer() StreamDialer {
-	return &directStreamDialer{}
+func NewDirectStreamDialer(mark ...uint32) StreamDialer {
+	return &directStreamDialer{dialer: NewMarkedDialer(firstMark(mark))}
 }
 
 func (d *directStreamDialer) Dial(ctx context.Context, target string) (net.Conn, error) {
 	return d.dialer.DialContext(ctx, "tcp4", target)
 }
 
-type directPacketDialer struct{}
+type directPacketDialer struct{ mark uint32 }
 
 type directPacketSession struct {
 	conn *net.UDPConn
 }
 
-func NewDirectPacketDialer() PacketDialer {
-	return directPacketDialer{}
+func NewDirectPacketDialer(mark ...uint32) PacketDialer {
+	return directPacketDialer{mark: firstMark(mark)}
 }
 
-func (directPacketDialer) OpenPacket(ctx context.Context) (PacketSession, error) {
+func (d directPacketDialer) OpenPacket(ctx context.Context) (PacketSession, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	conn, err := net.ListenUDP("udp4", nil)
+	packet, err := ListenMarkedPacket(ctx, "udp4", "0.0.0.0:0", d.mark)
 	if err != nil {
 		return nil, err
 	}
+	conn, ok := packet.(*net.UDPConn)
+	if !ok {
+		packet.Close()
+		return nil, errors.New("marked packet listener is not UDP")
+	}
 	return &directPacketSession{conn: conn}, nil
+}
+
+func firstMark(marks []uint32) uint32 {
+	if len(marks) == 0 {
+		return 0
+	}
+	return marks[0]
 }
 
 func (s *directPacketSession) Send(payload []byte, target string) error {

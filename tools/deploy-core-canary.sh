@@ -122,7 +122,8 @@ mv "$stage/$data" "$stage/routing.bin"
 chmod 700 "$stage/core" "$stage/generate.uc"
 uci -c "$stage/uci" set hy2route.main.transparent_port=22345
 uci -c "$stage/uci" set hy2route.main.dns_port=2053
-uci -c "$stage/uci" set hy2route.main.fwmark=103
+uci -c "$stage/uci" set hy2route.main.fwmark=104
+uci -c "$stage/uci" set hy2route.main.bypass_mark=103
 uci -c "$stage/uci" set hy2route.main.nft_table=hy2route_canary
 uci -c "$stage/uci" set hy2route.main.canary_source="$client"
 uci -c "$stage/uci" commit hy2route
@@ -131,9 +132,9 @@ HY2ROUTE_UCI_DIR="$stage/uci" HY2ROUTE_CHINA4_FILE=/usr/share/hy2route/china4.nf
 sed -i -e "s|/usr/share/hy2route/routing.bin|$stage/routing.bin|" -e "s|/var/run/hy2route-core.sock|$stage/control.sock|" "$stage/core.json"
 "$stage/core" check --config "$stage/core.json"
 nft -c -f "$stage/canary.nft"
-ip rule add priority 10065 fwmark 103 lookup "$(uci -c "$stage/uci" get hy2route.main.route_table)"
+ip rule add priority 10065 fwmark 104 lookup "$(uci -c "$stage/uci" get hy2route.main.route_table)"
 ip route add local 0.0.0.0/0 dev lo table "$(uci -c "$stage/uci" get hy2route.main.route_table)" 2>/dev/null || true
-nft insert rule inet hy2route prerouting_mangle position 0 meta mark 103 return comment "hy2route-core-canary-guard"
+nft insert rule inet hy2route prerouting_mangle position 0 meta mark 104 return comment "hy2route-core-canary-guard"
 nft -f "$stage/canary.nft"
 created_table=1
 : > "$stage/canary.log"

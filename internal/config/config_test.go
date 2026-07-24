@@ -42,6 +42,7 @@ func validConfig() Config {
 			Table:        "hy2route",
 			LANInterface: "br-lan",
 			Mark:         102,
+			BypassMark:   103,
 			RouteTable:   100,
 		},
 		Data: DataConfig{
@@ -90,6 +91,23 @@ func TestValidateRejectsIPv6AndPortCollisions(t *testing.T) {
 	cfg = validConfig()
 	cfg.HY2.MaxConcurrentDials = 257
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "max_concurrent_dials") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDefaultsAndSeparatesBypassMark(t *testing.T) {
+	cfg := validConfig()
+	cfg.Firewall.BypassMark = 0
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Firewall.BypassMark != cfg.Firewall.Mark+1 {
+		t.Fatalf("bypass mark = %d, want %d", cfg.Firewall.BypassMark, cfg.Firewall.Mark+1)
+	}
+
+	cfg = validConfig()
+	cfg.Firewall.BypassMark = cfg.Firewall.Mark
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "bypass") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

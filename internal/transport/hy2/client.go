@@ -33,7 +33,7 @@ type Client struct {
 	events transport.EventSink
 }
 
-func New(cfg config.HY2Config, bootstrap BootstrapResolver, events transport.EventSink) (*Client, error) {
+func New(cfg config.HY2Config, bootstrap BootstrapResolver, events transport.EventSink, mark ...uint32) (*Client, error) {
 	if bootstrap == nil {
 		return nil, errors.New("HY2 bootstrap resolver is required")
 	}
@@ -43,8 +43,12 @@ func New(cfg config.HY2Config, bootstrap BootstrapResolver, events transport.Eve
 	if cfg.MaxConcurrentDials < 1 {
 		cfg.MaxConcurrentDials = 32
 	}
+	var bypassMark uint32
+	if len(mark) != 0 {
+		bypassMark = mark[0]
+	}
 	core, err := coreclient.NewReconnectableClient(func() (*coreclient.Config, error) {
-		return buildCoreConfig(context.Background(), cfg, bootstrap)
+		return buildCoreConfig(context.Background(), cfg, bootstrap, bypassMark)
 	}, func(_ coreclient.Client, _ *coreclient.HandshakeInfo, _ int) {
 		events.Emit(transport.Event{Stage: "hy2.connected", Reason: "connected"})
 	}, true)
@@ -109,7 +113,7 @@ func (client *Client) OpenPacket(ctx context.Context) (transport.PacketSession, 
 
 func (client *Client) Close() error { return client.core.Close() }
 
-func buildCoreConfig(ctx context.Context, cfg config.HY2Config, bootstrap BootstrapResolver) (*coreclient.Config, error) {
+func buildCoreConfig(ctx context.Context, cfg config.HY2Config, bootstrap BootstrapResolver, mark ...uint32) (*coreclient.Config, error) {
 	host, rawPort, err := net.SplitHostPort(cfg.Server)
 	if err != nil {
 		return nil, fmt.Errorf("HY2 server: %w", err)
@@ -128,9 +132,14 @@ func buildCoreConfig(ctx context.Context, cfg config.HY2Config, bootstrap Bootst
 	if !ip.Is4() || ip.Is4In6() {
 		return nil, errors.New("HY2 server must resolve to IPv4")
 	}
+	var bypassMark uint32
+	if len(mark) != 0 {
+		bypassMark = mark[0]
+	}
 	return &coreclient.Config{
-		ServerAddr: &net.UDPAddr{IP: ip.AsSlice(), Port: port},
-		Auth:       cfg.Auth,
+		ConnFactory: markedPacketConnFactory{mark: bypassMark},
+		ServerAddr:  &net.UDPAddr{IP: ip.AsSlice(), Port: port},
+		Auth:        cfg.Auth,
 		TLSConfig: coreclient.TLSConfig{
 			ServerName:            cfg.SNI,
 			InsecureSkipVerify:    cfg.Insecure,
@@ -146,6 +155,12 @@ func buildCoreConfig(ctx context.Context, cfg config.HY2Config, bootstrap Bootst
 		},
 		CongestionConfig: coreclient.CongestionConfig{Type: "bbr", BBRProfile: "standard"},
 	}, nil
+}
+
+type markedPacketConnFactory struct{ mark uint32 }
+
+func (factory markedPacketConnFactory) New(net.Addr) (net.PacketConn, error) {
+	return transport.ListenMarkedPacket(context.Background(), "udp4", "0.0.0.0:0", factory.mark)
 }
 
 func pinVerifier(pin string) func([][]byte, [][]*x509.Certificate) error {

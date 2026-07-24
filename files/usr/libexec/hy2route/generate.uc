@@ -95,6 +95,7 @@ const smart_dns_port = number(main.smart_dns_port, 65353, 1, 65535, 'smart_dns_p
 const remote_dns = text(main.remote_dns, '8.8.8.8');
 const bootstrap_dns = text(main.bootstrap_dns, '192.168.1.1');
 const fwmark = number(main.fwmark, 102, 1, 2147483647, 'fwmark');
+const bypass_mark = number(main.bypass_mark, fwmark + 1, 1, 2147483647, 'bypass_mark');
 const log_level = text(main.log_level, 'warning');
 const udp_policy = text(main.udp_policy, 'proxy');
 const block_ipv6 = boolean(main.block_ipv6, true);
@@ -143,6 +144,8 @@ if (match(lan_interface, /^[A-Za-z0-9_.:-]+$/) == null)
 	fail('lan_interface contains unsupported characters');
 if (canary_source != '' && !is_ipv4(canary_source))
 	fail('canary_source must be an IPv4 address');
+if (bypass_mark == fwmark)
+	fail('bypass_mark must differ from fwmark');
 
 let proxy_ips = [];
 let direct_ips = [];
@@ -405,6 +408,7 @@ function emit_nft() {
 	print('\tset direct4 {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t}\n');
 	print('\tset inspect4 {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t}\n');
 	print('\tmap core_state {\n\t\ttype mark : verdict\n\t\tflags timeout\n\t}\n');
+	print('\tmap output_state {\n\t\ttype mark : verdict\n\t\tflags timeout\n\t}\n');
 	if (block_ipv6) {
 		print('\tchain block_forward_ipv6 {\n');
 		print('\t\ttype filter hook forward priority -1; policy accept;\n');
@@ -416,7 +420,7 @@ function emit_nft() {
 	print('\t\ttype filter hook prerouting priority mangle' + nft_priority + '; policy accept;\n');
 	print('\t\tiifname != "' + lan_interface + '" return\n');
 	if (canary_source == '')
-		print('\t\tmeta mark 103 return\n');
+		print('\t\tmeta mark ' + bypass_mark + ' return\n');
 	if (canary_source != '')
 		print('\t\tip saddr != ' + canary_source + ' return\n');
 	print('\t\tfib daddr type local return\n');
@@ -441,6 +445,27 @@ function emit_nft() {
 	print('\t\tip daddr @china4 return\n');
 	print('\t\tmeta l4proto tcp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
 	print('\t\tmeta l4proto udp tproxy ip to :' + transparent_port + ' meta mark set ' + fwmark + ' accept\n');
+	print('\t}\n');
+
+	print('\tchain output_nat {\n');
+	if (canary_source == '')
+		print('\t\ttype nat hook output priority -100; policy accept;\n');
+	print('\t\tmeta l4proto != tcp return\n');
+	print('\t\tmeta mark ' + bypass_mark + ' return\n');
+	print('\t\tmeta nfproto != ipv4 return\n');
+	print('\t\tfib daddr type local return\n');
+	print('\t\tmeta mark set 1\n');
+	print('\t\tmeta mark vmap @output_state\n');
+	print('\t\treturn\n');
+	print('\t}\n');
+	print('\tchain output_active {\n');
+	print('\t\tip daddr @bypass4 return\n');
+	print('\t\tip daddr @force_proxy4 meta l4proto tcp redirect to :' + transparent_port + '\n');
+	print('\t\tip daddr @force_direct4 return\n');
+	print('\t\tip daddr @inspect4 meta l4proto tcp redirect to :' + transparent_port + '\n');
+	print('\t\tip daddr @direct4 return\n');
+	print('\t\tip daddr @china4 return\n');
+	print('\t\tmeta l4proto tcp redirect to :' + transparent_port + '\n');
 	print('\t}\n');
 
 	print('\tchain prerouting_nat {\n');
@@ -490,7 +515,7 @@ function emit_core() {
 		landing: { type: landing_mode, server: landing_mode == 'direct' ? '' : landing_server + ':' + text(landing.port, '443'), username: landing_mode == 'direct' ? '' : text(landing.username, ''), password: landing_mode == 'direct' ? '' : text(landing.password, '') },
 		limits: { dns_cache_entries: number(main.dns_cache_entries, 4096, 64, 65536, 'dns_cache_entries'), learned_ip_entries: number(main.learned_ip_entries, 16384, 64, 131072, 'learned_ip_entries'), udp_sessions: number(main.udp_sessions, 2048, 64, 65536, 'udp_sessions'), udp_idle: '60s', sniff_bytes: number(main.sniff_bytes, 8192, 1024, 16384, 'sniff_bytes'), sniff_timeout: '250ms' },
 		health: { failure_threshold: 2, success_threshold: 2, cooldown: '30s', probe_interval: '10s' },
-		firewall: { table: text(main.nft_table, 'hy2route'), lan_interface: lan_interface, mark: fwmark, route_table: number(main.route_table, 166, 1, 2147483647, 'route_table'), canary_source: canary_source },
+		firewall: { table: text(main.nft_table, 'hy2route'), lan_interface: lan_interface, mark: fwmark, bypass_mark: bypass_mark, route_table: number(main.route_table, 166, 1, 2147483647, 'route_table'), canary_source: canary_source },
 		rules: rules, data: { routing: '/usr/share/hy2route/routing.bin' }, control_socket: '/var/run/hy2route-core.sock', log_level: log_level == 'warning' ? 'warn' : log_level, fail_open: true
 	};
 	print(sprintf('%J\n', output));

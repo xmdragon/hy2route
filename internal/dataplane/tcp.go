@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/netip"
@@ -74,7 +75,7 @@ func (server *TCPServer) handle(ctx context.Context, inbound net.Conn) error {
 	if server.Classifier == nil || server.Direct == nil || server.Proxy == nil {
 		return errors.New("TCP server is not configured")
 	}
-	target, targetIP, err := originalTarget(inbound.LocalAddr())
+	target, targetIP, err := originalTarget(inbound, server.ListenAddr)
 	if err != nil {
 		return err
 	}
@@ -120,7 +121,14 @@ func (server *TCPServer) selectDialer(target netip.Addr, domain string) transpor
 	return server.Proxy
 }
 
-func originalTarget(addr net.Addr) (string, netip.Addr, error) {
+func originalTarget(conn net.Conn, listenAddr string) (string, netip.Addr, error) {
+	addr, err := socketOriginalDestination(conn)
+	if err != nil || addr == nil {
+		addr = conn.LocalAddr()
+		if samePort(addr, listenAddr) {
+			return "", netip.Addr{}, fmt.Errorf("read redirected original destination: %w", err)
+		}
+	}
 	if addr == nil {
 		return "", netip.Addr{}, errors.New("original destination is missing")
 	}
@@ -133,6 +141,15 @@ func originalTarget(addr net.Addr) (string, netip.Addr, error) {
 		return "", netip.Addr{}, errors.New("original destination must be IPv4")
 	}
 	return addr.String(), ip, nil
+}
+
+func samePort(addr net.Addr, listenAddr string) bool {
+	if addr == nil || listenAddr == "" {
+		return false
+	}
+	_, localPort, localErr := net.SplitHostPort(addr.String())
+	_, listenPort, listenErr := net.SplitHostPort(listenAddr)
+	return localErr == nil && listenErr == nil && localPort == listenPort
 }
 
 func relay(inbound, outbound net.Conn) error {

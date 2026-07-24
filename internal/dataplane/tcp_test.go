@@ -91,6 +91,26 @@ func TestRelayClosesWriteSideAfterEOF(t *testing.T) {
 	}
 }
 
+func TestOriginalTargetRejectsTransparentListenerFallback(t *testing.T) {
+	client, inbound := net.Pipe()
+	defer client.Close()
+	defer inbound.Close()
+
+	conn := wrapAddrConn(inbound, "127.0.0.1:50000", "127.0.0.1:12345")
+	if _, _, err := originalTarget(conn, "0.0.0.0:12345"); err == nil {
+		t.Fatal("transparent listener fallback unexpectedly accepted")
+	}
+
+	conn = wrapAddrConn(inbound, "192.168.80.20:50000", "203.0.113.8:443")
+	target, ip, err := originalTarget(conn, "0.0.0.0:12345")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target != "203.0.113.8:443" || ip.String() != "203.0.113.8" {
+		t.Fatalf("unexpected original target: %s %s", target, ip)
+	}
+}
+
 func testClassifier(t *testing.T) *policy.Classifier {
 	t.Helper()
 	classifier, err := policy.New(dataset.Data{Domains: []dataset.Domain{{Name: "wechat.com"}}}, []config.RuleConfig{{Action: "proxy", Type: "domain", Value: "proxy.example"}})

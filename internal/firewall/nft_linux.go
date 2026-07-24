@@ -14,15 +14,23 @@ import (
 )
 
 type NftSetClient struct {
-	mu                    sync.Mutex
-	table                 *nftables.Table
-	direct, inspect, core *nftables.Set
-	states                map[netip.Addr]SetState
+	mu                sync.Mutex
+	table             *nftables.Table
+	direct, inspect   *nftables.Set
+	core, localOutput *nftables.Set
+	states            map[netip.Addr]SetState
 }
 
 func NewNftSetClient(tableName string) *NftSetClient {
 	table := &nftables.Table{Name: tableName, Family: nftables.TableFamilyINet}
-	return &NftSetClient{table: table, direct: &nftables.Set{Table: table, Name: "direct4", KeyType: nftables.TypeIPAddr}, inspect: &nftables.Set{Table: table, Name: "inspect4", KeyType: nftables.TypeIPAddr}, core: &nftables.Set{Table: table, Name: "core_state", KeyType: nftables.TypeMark, DataType: nftables.TypeVerdict, IsMap: true}, states: make(map[netip.Addr]SetState)}
+	return &NftSetClient{
+		table:       table,
+		direct:      &nftables.Set{Table: table, Name: "direct4", KeyType: nftables.TypeIPAddr},
+		inspect:     &nftables.Set{Table: table, Name: "inspect4", KeyType: nftables.TypeIPAddr},
+		core:        &nftables.Set{Table: table, Name: "core_state", KeyType: nftables.TypeMark, DataType: nftables.TypeVerdict, IsMap: true},
+		localOutput: &nftables.Set{Table: table, Name: "output_state", KeyType: nftables.TypeMark, DataType: nftables.TypeVerdict, IsMap: true},
+		states:      make(map[netip.Addr]SetState),
+	}
 }
 func clampTTL(ttl time.Duration) time.Duration {
 	if ttl < time.Second {
@@ -68,11 +76,18 @@ func (c *NftSetClient) Heartbeat(ctx context.Context, ttl time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	delete := exec.CommandContext(ctx, "nft", fmt.Sprintf("delete element inet %s core_state { 0x00000001 }", c.table.Name))
-	_, _ = delete.CombinedOutput()
-	command := exec.CommandContext(ctx, "nft", fmt.Sprintf("add element inet %s core_state { 0x00000001 timeout %s : jump active }", c.table.Name, clampTTL(ttl)))
-	if output, err := command.CombinedOutput(); err != nil {
-		return fmt.Errorf("nft heartbeat: %w: %s", err, output)
+	for _, heartbeat := range []struct {
+		set, chain string
+	}{
+		{set: c.core.Name, chain: "active"},
+		{set: c.localOutput.Name, chain: "output_active"},
+	} {
+		delete := exec.CommandContext(ctx, "nft", fmt.Sprintf("delete element inet %s %s { 0x00000001 }", c.table.Name, heartbeat.set))
+		_, _ = delete.CombinedOutput()
+		command := exec.CommandContext(ctx, "nft", fmt.Sprintf("add element inet %s %s { 0x00000001 timeout %s : jump %s }", c.table.Name, heartbeat.set, clampTTL(ttl), heartbeat.chain))
+		if output, err := command.CombinedOutput(); err != nil {
+			return fmt.Errorf("nft heartbeat %s: %w: %s", heartbeat.set, err, output)
+		}
 	}
 	return nil
 }
