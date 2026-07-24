@@ -100,6 +100,7 @@ const udp_policy = text(main.udp_policy, 'proxy');
 const block_ipv6 = boolean(main.block_ipv6, true);
 const congestion = text(relay.congestion, 'bbr');
 const bbr_profile = text(relay.bbr_profile, 'standard');
+const canary_source = text(main.canary_source, '');
 
 if (!valid_host(relay_server) || !valid_host(landing_server))
 	fail('relay and landing server values may contain only letters, digits, dot, colon, underscore and dash');
@@ -139,6 +140,8 @@ if (bbr_profile != 'conservative' && bbr_profile != 'standard' && bbr_profile !=
 	fail("bbr_profile must be 'conservative', 'standard' or 'aggressive'");
 if (match(lan_interface, /^[A-Za-z0-9_.:-]+$/) == null)
 	fail('lan_interface contains unsupported characters');
+if (canary_source != '' && !is_ipv4(canary_source))
+	fail('canary_source must be an IPv4 address');
 
 let proxy_ips = [];
 let direct_ips = [];
@@ -410,6 +413,8 @@ function emit_nft() {
 	print('\tchain prerouting_mangle {\n');
 	print('\t\ttype filter hook prerouting priority mangle; policy accept;\n');
 	print('\t\tiifname != "' + lan_interface + '" return\n');
+	if (canary_source != '')
+		print('\t\tip saddr != ' + canary_source + ' return\n');
 	print('\t\tfib daddr type local return\n');
 	print('\t\t1 vmap @core_state\n');
 	print('\t\treturn\n');
@@ -470,7 +475,7 @@ function emit_core() {
 		landing: { type: landing_mode, server: landing_mode == 'direct' ? '' : landing_server + ':' + text(landing.port, '443'), username: landing_mode == 'direct' ? '' : text(landing.username, ''), password: landing_mode == 'direct' ? '' : text(landing.password, '') },
 		limits: { dns_cache_entries: number(main.dns_cache_entries, 4096, 64, 65536, 'dns_cache_entries'), learned_ip_entries: number(main.learned_ip_entries, 16384, 64, 131072, 'learned_ip_entries'), udp_sessions: number(main.udp_sessions, 2048, 64, 65536, 'udp_sessions'), udp_idle: '60s', sniff_bytes: number(main.sniff_bytes, 8192, 1024, 16384, 'sniff_bytes'), sniff_timeout: '250ms' },
 		health: { failure_threshold: 2, success_threshold: 2, cooldown: '30s', probe_interval: '10s' },
-		firewall: { table: text(main.nft_table, 'hy2route'), lan_interface: lan_interface, mark: fwmark, route_table: number(main.route_table, 166, 1, 2147483647, 'route_table') },
+		firewall: { table: text(main.nft_table, 'hy2route'), lan_interface: lan_interface, mark: fwmark, route_table: number(main.route_table, 166, 1, 2147483647, 'route_table'), canary_source: canary_source },
 		rules: rules, data: { routing: '/usr/share/hy2route/routing.bin' }, log_level: log_level == 'warning' ? 'warn' : log_level, fail_open: true
 	};
 	print(sprintf('%J\n', output));
