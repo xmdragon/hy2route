@@ -65,6 +65,11 @@ return view.extend({
 		o.default = '8.8.8.8';
 		o.rmempty = false;
 
+		o = s.taboption('general', form.Flag, 'smart_dns', _('智能 DNS'),
+			_('同时查询国内 DNS 和经代理访问的远程 DNS；国内答案属于大陆 IP 时优先采用。'));
+		o.default = o.enabled;
+		o.rmempty = false;
+
 		o = s.taboption('general', form.ListValue, 'log_level', _('日志级别'));
 		o.value('warning', _('警告'));
 		o.value('info', _('信息'));
@@ -79,7 +84,8 @@ return view.extend({
 	[
 		['transparent_port', _('透明代理端口'), '12345'],
 		['test_socks_port', _('本机测试 SOCKS 端口'), '10780'],
-		['dns_port', _('DNS 代理端口'), '1053']
+		['dns_port', _('DNS 代理端口'), '1053'],
+		['smart_dns_port', _('智能 DNS 端口'), '65353']
 	].forEach(function(spec) {
 		o = s.taboption('advanced', form.Value, spec[0], spec[1]);
 		o.datatype = 'port';
