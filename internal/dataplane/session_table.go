@@ -44,6 +44,9 @@ func newSessionTable(capacity int, idle time.Duration, now func() time.Time) *se
 	}
 	return &sessionTable{capacity: capacity, idle: idle, now: now, entries: make(map[sessionKey]*sessionEntry)}
 }
+func NewSessionTable(capacity int, idle time.Duration) *sessionTable {
+	return newSessionTable(capacity, idle, nil)
+}
 
 func (table *sessionTable) get(key sessionKey) sessionCloser {
 	table.mu.Lock()

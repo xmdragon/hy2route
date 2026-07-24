@@ -18,6 +18,7 @@ import (
 
 type TCPServer struct {
 	ListenAddr string
+	Ready      chan<- struct{}
 	Classifier *policy.Classifier
 	Learned    *policy.LearningTable
 	Direct     transport.StreamDialer
@@ -36,6 +37,9 @@ func (server *TCPServer) Run(ctx context.Context) error {
 		return err
 	}
 	defer listener.Close()
+	if server.Ready != nil {
+		close(server.Ready)
+	}
 	go func() {
 		<-ctx.Done()
 		_ = listener.Close()

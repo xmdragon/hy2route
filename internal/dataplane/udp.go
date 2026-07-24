@@ -15,6 +15,7 @@ import (
 
 type UDPServer struct {
 	ListenAddr string
+	Ready      chan<- struct{}
 	Classifier *policy.Classifier
 	Learned    *policy.LearningTable
 	Direct     transport.PacketDialer
@@ -50,6 +51,9 @@ func (server *UDPServer) Run(ctx context.Context) error {
 		return err
 	}
 	defer conn.Close()
+	if server.Ready != nil {
+		close(server.Ready)
+	}
 	go func() { <-ctx.Done(); _ = conn.Close() }()
 	buffer := make([]byte, 64<<10)
 	for {
