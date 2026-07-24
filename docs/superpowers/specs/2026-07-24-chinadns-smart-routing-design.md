@@ -83,7 +83,9 @@ When enabled:
 When disabled, hy2route preserves release 12 behavior exactly. This opt-out is
 an emergency compatibility mechanism, not an automatic fallback.
 
-The two ports must be different. Both must be valid TCP/UDP port numbers.
+`smart_dns_port` must differ from `dns_port`, `transparent_port`, and
+`test_socks_port`, because ChinaDNS and Xray bind TCP and UDP listeners on
+those ports. All ports must be valid TCP/UDP port numbers.
 
 ## Generated ChinaDNS Configuration
 
