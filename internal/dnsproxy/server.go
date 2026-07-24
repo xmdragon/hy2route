@@ -13,6 +13,7 @@ import (
 type Server struct {
 	listen   string
 	resolver *Resolver
+	Ready    chan<- struct{}
 
 	mu   sync.RWMutex
 	addr string
@@ -53,6 +54,9 @@ func (server *Server) Run(ctx context.Context) error {
 	server.mu.Lock()
 	server.addr = tcpListener.Addr().String()
 	server.mu.Unlock()
+	if server.Ready != nil {
+		close(server.Ready)
+	}
 
 	errors := make(chan error, 2)
 	go func() { errors <- udpServer.ActivateAndServe() }()

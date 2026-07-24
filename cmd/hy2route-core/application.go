@@ -83,15 +83,15 @@ func (application *application) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	errs := make(chan error, 3)
-	tcpReady, udpReady := make(chan struct{}), make(chan struct{})
-	application.tcp.Ready, application.udp.Ready = tcpReady, udpReady
+	dnsReady, tcpReady, udpReady := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	application.dns.Ready, application.tcp.Ready, application.udp.Ready = dnsReady, tcpReady, udpReady
 	var group sync.WaitGroup
 	for _, run := range []func(context.Context) error{application.dns.Run, application.tcp.Run, application.udp.Run} {
 		group.Add(1)
 		go func(f func(context.Context) error) { defer group.Done(); errs <- f(ctx) }(run)
 	}
 	go func() { group.Wait(); close(errs) }()
-	for _, ready := range []<-chan struct{}{tcpReady, udpReady} {
+	for _, ready := range []<-chan struct{}{dnsReady, tcpReady, udpReady} {
 		select {
 		case <-ready:
 		case err := <-errs:
