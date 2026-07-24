@@ -17,9 +17,10 @@
 - UDP DNS check: `wechat.com` 28 ms and `www.google.com` 440 ms, both answered over UDP by `192.168.80.1:53`.
 - Legacy Xray was stopped only after the core checks passed; complete backup remains at `/root/hy2route-backup-20260724-071816-core`.
 - First post-cutover soak sample: RSS `24,432 kB`, high-water `27,036 kB`; nft heartbeat had `8.68 s` remaining from a 10-second lease.
+- Second five-minute sample: RSS `23,796 kB`, high-water unchanged at `27,036 kB`; this meets the 24 MiB idle-RSS target.
+- A 20-request concurrent HTTPS smoke workload (10 Google, 10 WeChat) completed without client errors; RSS and high-water remained `23,796/27,036 kB`.
 
 ## Pending gates
 
-- Independent 10-minute idle RSS sample (the initial one-shot collector did not persist output).
-- 20-device-equivalent load, domestic and overseas throughput, UDP loss/session churn.
+- Measured iperf3 domestic/overseas throughput and UDP loss/session churn.
 - 72-hour five-minute health/RSS/oom/crash observation.
