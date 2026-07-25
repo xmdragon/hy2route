@@ -78,7 +78,7 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 			return nil, fmt.Errorf("build landing transport: %w", err)
 		}
 		udpProxy := transport.NewFailOpenPacket(hy2Client, directPacket, controller, nil)
-		app.tcp = &dataplane.TCPServer{ListenAddr: cfg.Listen.TCP, Classifier: classifier, Learned: learner, Direct: direct, Proxy: tcpProxy, Sniff: dataplaneSniff(cfg), MaxActive: cfg.HY2.MaxConcurrentDials}
+		app.tcp = &dataplane.TCPServer{ListenAddr: cfg.Listen.TCP, Classifier: classifier, Learned: learner, Direct: direct, Proxy: tcpProxy, Sniff: dataplaneSniff(cfg), MaxActive: cfg.Limits.TCPSessions}
 		app.udp = &dataplane.UDPServer{ListenAddr: cfg.Listen.UDP, Classifier: classifier, Learned: learner, Direct: directPacket, Proxy: udpProxy, Sessions: dataplane.NewSessionTable(cfg.Limits.UDPSessions, cfg.Limits.UDPIdle.Value())}
 	}
 	return app, nil

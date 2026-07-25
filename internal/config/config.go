@@ -68,6 +68,7 @@ type LandingConfig struct {
 type LimitsConfig struct {
 	DNSCacheEntries  int      `json:"dns_cache_entries"`
 	LearnedIPEntries int      `json:"learned_ip_entries"`
+	TCPSessions      int      `json:"tcp_sessions"`
 	UDPSessions      int      `json:"udp_sessions"`
 	UDPIdle          Duration `json:"udp_idle"`
 	SniffBytes       int      `json:"sniff_bytes"`
@@ -275,7 +276,13 @@ func (c Config) validateLanding() error {
 	return nil
 }
 
-func (c Config) validateLimits() error {
+func (c *Config) validateLimits() error {
+	if c.Limits.TCPSessions == 0 {
+		c.Limits.TCPSessions = 256
+	}
+	if !betweenInt(c.Limits.TCPSessions, 64, 4096) {
+		return errors.New("TCP session limit is out of range")
+	}
 	if !betweenInt(c.Limits.DNSCacheEntries, 64, 65536) || !betweenInt(c.Limits.LearnedIPEntries, 64, 131072) || !betweenInt(c.Limits.UDPSessions, 64, 65536) {
 		return errors.New("cache and session limits are out of range")
 	}
