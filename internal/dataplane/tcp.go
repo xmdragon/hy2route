@@ -9,7 +9,7 @@ import (
 	"log"
 	"net"
 	"net/netip"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apernet/go-tproxy"
@@ -163,35 +163,53 @@ func relayFrom(inbound net.Conn, replay *bufio.Reader, outbound net.Conn) error 
 	if replay == nil {
 		replay = bufio.NewReader(inbound)
 	}
-	errorsCh := make(chan error, 2)
-	var group sync.WaitGroup
-	group.Add(2)
+	type copyResult struct {
+		first       bool
+		err         error
+		fullyClosed bool
+	}
+	results := make(chan copyResult, 2)
+	var completed atomic.Int32
 	go func() {
-		defer group.Done()
 		_, err := io.CopyBuffer(outbound, replay, make([]byte, 32<<10))
-		closeWrite(outbound)
-		errorsCh <- relayError(err)
+		first := completed.CompareAndSwap(0, 1)
+		results <- copyResult{first: first, err: err, fullyClosed: closeWrite(outbound)}
 	}()
 	go func() {
-		defer group.Done()
 		_, err := io.CopyBuffer(inbound, outbound, make([]byte, 32<<10))
-		closeWrite(inbound)
-		errorsCh <- relayError(err)
+		first := completed.CompareAndSwap(0, 2)
+		results <- copyResult{first: first, err: err, fullyClosed: closeWrite(inbound)}
 	}()
-	group.Wait()
-	close(errorsCh)
-	for err := range errorsCh {
-		if err != nil {
-			return err
+	var first, second copyResult
+	for range 2 {
+		result := <-results
+		if result.first {
+			first = result
+		} else {
+			second = result
 		}
 	}
-	return nil
+	if err := relayError(first.err); err != nil {
+		return err
+	}
+	if first.fullyClosed {
+		// Closing a connection without half-close support is what releases the
+		// opposite copy. Its resulting local-close error is expected.
+		return nil
+	}
+	return relayError(second.err)
 }
 
-func closeWrite(conn net.Conn) {
+func closeWrite(conn net.Conn) bool {
 	if closer, ok := conn.(interface{ CloseWrite() error }); ok {
 		_ = closer.CloseWrite()
+		return false
 	}
+	// Hysteria's TCP stream exposes net.Conn but not CloseWrite. Leaving that
+	// stream open keeps the opposite copy blocked after the TCP peer exits,
+	// so the handler and its active-session slot never return.
+	_ = conn.Close()
+	return true
 }
 
 func relayError(err error) error {

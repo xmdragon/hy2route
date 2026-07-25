@@ -3,6 +3,7 @@ package dataplane
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/netip"
@@ -91,6 +92,105 @@ func TestRelayClosesWriteSideAfterEOF(t *testing.T) {
 	}
 }
 
+func TestRelayClosesConnectionWithoutHalfCloseAfterInboundEOF(t *testing.T) {
+	client, inbound := tcpPair(t)
+	defer inbound.Close()
+	rawOutbound, target := tcpPair(t)
+	defer rawOutbound.Close()
+	defer target.Close()
+
+	outbound := &noHalfCloseConn{Conn: rawOutbound}
+	done := make(chan error, 1)
+	go func() { done <- relay(inbound, outbound) }()
+
+	if _, err := client.Write([]byte("request")); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(readExactly(t, target, 7)); got != "request" {
+		t.Fatal(got)
+	}
+	if err := target.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var one [1]byte
+	if _, err := target.Read(one[:]); !errors.Is(err, io.EOF) {
+		t.Fatalf("target did not receive EOF: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("relay did not return")
+	}
+}
+
+func TestRelayIgnoresReadErrorInducedByFullClose(t *testing.T) {
+	client, inbound := tcpPair(t)
+	defer inbound.Close()
+	rawOutbound, target := net.Pipe()
+	defer rawOutbound.Close()
+	defer target.Close()
+
+	outbound := &readErrorOnCloseConn{Conn: rawOutbound}
+	done := make(chan error, 1)
+	go func() { done <- relay(inbound, outbound) }()
+
+	if _, err := client.Write([]byte("request")); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(readExactly(t, target, 7)); got != "request" {
+		t.Fatal(got)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("relay returned induced close error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("relay did not return")
+	}
+}
+
+func TestRelayReturnsReverseCopyErrorThatPrecedesFullClose(t *testing.T) {
+	client, inbound := tcpPair(t)
+	defer inbound.Close()
+	rawOutbound, target := net.Pipe()
+	defer rawOutbound.Close()
+	defer target.Close()
+
+	expected := errors.New("remote stream failed")
+	outbound := &immediateReadErrorConn{Conn: rawOutbound, err: expected}
+	done := make(chan error, 1)
+	go func() { done <- relay(inbound, outbound) }()
+
+	if err := client.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var one [1]byte
+	if _, err := client.Read(one[:]); !errors.Is(err, io.EOF) {
+		t.Fatalf("client did not observe reverse-copy half-close: %v", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, expected) {
+			t.Fatalf("relay error = %v, want %v", err, expected)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("relay did not return")
+	}
+}
+
 func TestOriginalTargetRejectsTransparentListenerFallback(t *testing.T) {
 	client, inbound := net.Pipe()
 	defer client.Close()
@@ -152,6 +252,37 @@ func (d *recordingDialer) wait(t *testing.T) dialEntry {
 	}
 }
 func (d *recordingDialer) calls() int { return len(d.entries) }
+
+type noHalfCloseConn struct {
+	net.Conn
+}
+
+type readErrorOnCloseConn struct {
+	net.Conn
+}
+
+func (conn *readErrorOnCloseConn) Read(buffer []byte) (int, error) {
+	n, err := conn.Conn.Read(buffer)
+	if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, net.ErrClosed) {
+		return n, errors.New("stream canceled by local with error code 0")
+	}
+	return n, err
+}
+
+func (conn *readErrorOnCloseConn) Close() error {
+	err := conn.Conn.Close()
+	time.Sleep(20 * time.Millisecond)
+	return err
+}
+
+type immediateReadErrorConn struct {
+	net.Conn
+	err error
+}
+
+func (conn *immediateReadErrorConn) Read([]byte) (int, error) {
+	return 0, conn.err
+}
 
 type addrConn struct {
 	net.Conn
