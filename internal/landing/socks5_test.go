@@ -16,7 +16,7 @@ func TestSOCKS5UsernamePasswordAndIPv4Connect(t *testing.T) {
 	dialer := newSOCKS5(base, "landing.example:1080", "alice", "secret")
 	errs := make(chan error, 1)
 	go func() {
-		if got := readN(peer, 4); !bytes.Equal(got, []byte{5, 2, 0, 2}) {
+		if got := readN(peer, 3); !bytes.Equal(got, []byte{5, 1, 2}) {
 			errs <- fmt.Errorf("greeting %v", got)
 			return
 		}

@@ -31,7 +31,7 @@ func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, 
 	defer conn.SetDeadline(time.Time{})
 	methods := []byte{5, 1, 0}
 	if dialer.user != "" || dialer.password != "" {
-		methods = []byte{5, 2, 0, 2}
+		methods = []byte{5, 1, 2}
 	}
 	if _, err := conn.Write(methods); err != nil {
 		conn.Close()
