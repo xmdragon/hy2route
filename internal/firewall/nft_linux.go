@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,15 +32,6 @@ func NewNftSetClient(tableName string) *NftSetClient {
 		localOutput: &nftables.Set{Table: table, Name: "output_state", KeyType: nftables.TypeMark, DataType: nftables.TypeVerdict, IsMap: true},
 		states:      make(map[netip.Addr]SetState),
 	}
-}
-func clampTTL(ttl time.Duration) time.Duration {
-	if ttl < time.Second {
-		return time.Second
-	}
-	if ttl > 24*time.Hour {
-		return 24 * time.Hour
-	}
-	return ttl
 }
 func key(ip netip.Addr) []byte { return append([]byte(nil), ip.AsSlice()...) }
 func (c *NftSetClient) Replace(ctx context.Context, updates []SetUpdate) error {
@@ -76,18 +68,14 @@ func (c *NftSetClient) Heartbeat(ctx context.Context, ttl time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	for _, heartbeat := range []struct {
-		set, chain string
-	}{
+	entries := []heartbeatEntry{
 		{set: c.core.Name, chain: "active"},
 		{set: c.localOutput.Name, chain: "output_active"},
-	} {
-		delete := exec.CommandContext(ctx, "nft", fmt.Sprintf("delete element inet %s %s { 0x00000001 }", c.table.Name, heartbeat.set))
-		_, _ = delete.CombinedOutput()
-		command := exec.CommandContext(ctx, "nft", fmt.Sprintf("add element inet %s %s { 0x00000001 timeout %s : jump %s }", c.table.Name, heartbeat.set, clampTTL(ttl), heartbeat.chain))
-		if output, err := command.CombinedOutput(); err != nil {
-			return fmt.Errorf("nft heartbeat %s: %w: %s", heartbeat.set, err, output)
-		}
+	}
+	command := exec.CommandContext(ctx, "nft", "-f", "-")
+	command.Stdin = strings.NewReader(buildHeartbeatBatch(c.table.Name, ttl, entries))
+	if output, err := command.CombinedOutput(); err != nil {
+		return fmt.Errorf("nft heartbeat: %w: %s", err, output)
 	}
 	return nil
 }

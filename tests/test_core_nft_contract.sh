@@ -37,6 +37,11 @@ grep -Fq 'unix.SO_ORIGINAL_DST' internal/dataplane/original_destination_linux.go
 grep -Fq 'cfg.Firewall.BypassMark' cmd/hy2route-core/application.go
 grep -Fq 'output_state' internal/firewall/nft_linux.go
 grep -Fq 'output_active' internal/firewall/nft_linux.go
+grep -Fq 'buildHeartbeatBatch' internal/firewall/nft_linux.go
+grep -Fq 'exec.CommandContext(ctx, "nft", "-f", "-")' internal/firewall/nft_linux.go
+test "$(grep -Fc 'exec.CommandContext(ctx, "nft"' internal/firewall/nft_linux.go)" -eq 1
+! grep -Fq 'delete element inet' internal/firewall/nft_linux.go
+grep -Fq 'flush map inet' internal/firewall/heartbeat.go
 grep -Fq "const nft_priority = canary_source != '' ? ' - 10' : '';" "$g"
 grep -Fq "priority mangle' + nft_priority" "$g"
 grep -Fq "priority dstnat' + nft_priority" "$g"
