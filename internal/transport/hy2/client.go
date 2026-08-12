@@ -54,7 +54,7 @@ func New(cfg config.HY2Config, bootstrap BootstrapResolver, events transport.Eve
 	core, err := coreclient.NewReconnectableClient(func() (*coreclient.Config, error) {
 		return buildCoreConfig(context.Background(), cfg, bootstrap, bypassMark)
 	}, func(_ coreclient.Client, _ *coreclient.HandshakeInfo, _ int) {
-		events.Emit(transport.Event{Stage: "hy2.connected", Reason: "connected", Sequence: client.sequence.Add(1)})
+		events.Emit(client.connectedEvent())
 	}, true)
 	if err != nil {
 		return nil, fmt.Errorf("create HY2 client: %w", err)
@@ -121,6 +121,10 @@ func (client *Client) OpenPacket(ctx context.Context) (transport.PacketSession, 
 }
 
 func (client *Client) Close() error { return client.core.Close() }
+
+func (client *Client) connectedEvent() transport.Event {
+	return transport.Event{Stage: "hy2.connected", Reason: "connected", Sequence: client.sequence.Load()}
+}
 
 func isTransportFailure(err error) bool {
 	var dialError coreErrs.DialError

@@ -4,7 +4,7 @@
 
 **Goal:** Report the HY2 transport's last known idle, connected, or degraded state with backward-compatible status fields, then ship and verify the change on the OpenWrt router.
 
-**Architecture:** A concurrency-safe application-owned tracker implements the existing `transport.EventSink`. The HY2 reconnectable client sends successful handshake and TCP/UDP error events to the tracker, and the control snapshot publishes the tracker's immutable last-known state without exposing error text or credentials.
+**Architecture:** A concurrency-safe application-owned tracker implements the existing `transport.EventSink`. The HY2 reconnectable client sends successful handshake and transport-level TCP/UDP error events to the tracker, tagged with a monotonic connection-attempt sequence so stale events are ignored. The control snapshot publishes the tracker's immutable last-known state without exposing error text or credentials.
 
 **Tech Stack:** Go 1.25.12, Hysteria 2 reconnectable client events, Unix control socket JSON, OpenWrt 23.05/procd/opkg, nftables, GitHub Actions OpenWrt SDK build.
 
@@ -80,7 +80,7 @@ Expected: FAIL to compile because `newHY2StatusTracker` does not exist.
 
 - [ ] **Step 3: Implement the minimal tracker**
 
-Add a `sync.RWMutex` protected tracker and snapshot. Initialize it to `idle`; update only for `hy2.connected`, `hy2.tcp`, and `hy2.udp`; format times with `tracker.now().UTC().Format(time.RFC3339Nano)`. Never store `Event.Reason`.
+Add a `sync.RWMutex` protected tracker and snapshot. Initialize it to `idle`; update only for `hy2.connected` and transport-level `hy2.tcp`/`hy2.udp` failures; ignore events with an older connection-attempt sequence; format times with `tracker.now().UTC().Format(time.RFC3339Nano)`. Never store `Event.Reason`.
 
 - [ ] **Step 4: Verify GREEN and race safety**
 

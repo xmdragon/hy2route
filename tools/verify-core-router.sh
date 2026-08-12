@@ -24,8 +24,25 @@ case "$expect" in
 		echo 'legacy verification passed: core not cut over'
 		;;
 	core)
-		remote 'hy2route-core status --socket /var/run/hy2route-core.sock >/tmp/hy2route-core-status.json; ! ps w | grep -q "[/]usr/bin/xray"; grep -Fq "server=127.0.0.1#1053" /tmp/dnsmasq.d/hy2route.conf; nft list map inet hy2route core_state >/dev/null; grep -Fq "\"mode\"" /tmp/hy2route-core-status.json'
-		remote 'grep -Eq "\"hy2_state\":\"(idle|connected|degraded)\"" /tmp/hy2route-core-status.json; if grep -Fq "\"hy2_state\":\"connected\"" /tmp/hy2route-core-status.json; then grep -Fq "\"hy2_connected\":true" /tmp/hy2route-core-status.json; grep -Eq "\"hy2_last_success\":\"[^\"]+\"" /tmp/hy2route-core-status.json; else grep -Fq "\"hy2_connected\":false" /tmp/hy2route-core-status.json; fi'
+		status="$(remote 'hy2route-core status --socket /var/run/hy2route-core.sock')"
+		remote '! ps w | grep -q "[/]usr/bin/xray"; grep -Fq "server=127.0.0.1#1053" /tmp/dnsmasq.d/hy2route.conf; nft list map inet hy2route core_state >/dev/null'
+		printf '%s\n' "$status" | grep -Fq '"mode"'
+		printf '%s\n' "$status" | grep -Eq '"hy2_state":"(idle|connected|degraded)"'
+		timestamp='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z'
+		case "$status" in
+			*'"hy2_state":"connected"'*)
+				printf '%s\n' "$status" | grep -Fq '"hy2_connected":true'
+				printf '%s\n' "$status" | grep -Eq "\"hy2_last_success\":\"$timestamp\""
+				;;
+			*'"hy2_state":"degraded"'*)
+				printf '%s\n' "$status" | grep -Fq '"hy2_connected":false'
+				printf '%s\n' "$status" | grep -Eq "\"hy2_last_error\":\"$timestamp\""
+				;;
+			*'"hy2_state":"idle"'*)
+				printf '%s\n' "$status" | grep -Fq '"hy2_connected":false'
+				;;
+			*) exit 1 ;;
+		esac
 		echo 'core verification passed'
 		;;
 esac

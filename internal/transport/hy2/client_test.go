@@ -97,6 +97,15 @@ func TestAdapterSequencesTransportFailureFromAttemptStart(t *testing.T) {
 	}
 }
 
+func TestAdapterHandshakeUsesCurrentAttemptSequence(t *testing.T) {
+	adapter := newWithCoreClient(&fakeCoreClient{}, 1)
+	attempt := adapter.sequence.Add(1)
+	event := adapter.connectedEvent()
+	if event.Stage != "hy2.connected" || event.Sequence != attempt {
+		t.Fatalf("event = %+v, attempt = %d", event, attempt)
+	}
+}
+
 func TestBuildCoreConfigPinsCertificate(t *testing.T) {
 	cfg := testHY2Config()
 	cfg.PinnedCertSHA256 = strings.Repeat("ab", 32)

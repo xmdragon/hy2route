@@ -71,6 +71,19 @@ func TestHY2StatusIgnoresFailureOlderThanSuccessfulHandshake(t *testing.T) {
 	}
 }
 
+func TestHY2StatusAcceptsFailureFromHandshakeAttempt(t *testing.T) {
+	now := time.Date(2026, 8, 11, 7, 3, 0, 0, time.UTC)
+	tracker := newHY2StatusTracker(func() time.Time { return now })
+	tracker.Emit(transport.Event{Stage: "hy2.connected", Sequence: 2})
+
+	now = now.Add(time.Second)
+	tracker.Emit(transport.Event{Stage: "hy2.tcp", Sequence: 2})
+	got := tracker.Snapshot()
+	if got.Connected || got.State != "degraded" || got.LastError != now.Format(time.RFC3339Nano) {
+		t.Fatalf("snapshot = %+v", got)
+	}
+}
+
 func TestApplicationSnapshotReportsHY2Status(t *testing.T) {
 	now := time.Date(2026, 8, 11, 7, 2, 0, 456, time.UTC)
 	tracker := newHY2StatusTracker(func() time.Time { return now })

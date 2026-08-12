@@ -55,8 +55,14 @@ addresses, authentication values, and other transport details are not added to t
 control response. Existing socket permissions remain `0600`, and the existing status
 contract continues to contain no secrets.
 
-Unrelated event stages are ignored. The tracker uses a mutex so handshake callbacks,
-TCP dials, UDP sessions, and control requests may run concurrently without races.
+Unrelated event stages are ignored. Target-level Hysteria dial errors are also
+excluded because they do not prove that the HY2 transport is unhealthy. Each HY2
+connection attempt reserves a monotonically increasing sequence number; its handshake
+and failure events share that number, and the tracker ignores events older than its
+last accepted sequence. This prevents a slow failure from an earlier attempt from
+overwriting a later successful reconnect. The tracker uses a mutex so handshake
+callbacks, TCP dials, UDP sessions, and control requests may run concurrently without
+races.
 
 ## Testing
 
@@ -67,6 +73,7 @@ Tests cover:
 - TCP and UDP error transitions to degraded.
 - Recovery after a later successful handshake while retaining the last error time.
 - Ignoring unrelated transport events.
+- Excluding target-level dial errors and suppressing stale attempt events.
 - JSON/control-socket compatibility, including the existing boolean and the absence
   of secret fields.
 - Race-safe behavior through the repository's Go race tests.
