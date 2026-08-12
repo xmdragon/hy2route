@@ -25,7 +25,7 @@ case "$expect" in
 		;;
 	core)
 		remote 'hy2route-core status --socket /var/run/hy2route-core.sock >/tmp/hy2route-core-status.json; ! ps w | grep -q "[/]usr/bin/xray"; grep -Fq "server=127.0.0.1#1053" /tmp/dnsmasq.d/hy2route.conf; nft list map inet hy2route core_state >/dev/null; grep -Fq "\"mode\"" /tmp/hy2route-core-status.json'
-		remote "grep -Fq '\"hy2_connected\"' /tmp/hy2route-core-status.json; grep -Fq '\"hy2_state\"' /tmp/hy2route-core-status.json"
+		remote 'grep -Eq "\"hy2_state\":\"(idle|connected|degraded)\"" /tmp/hy2route-core-status.json; if grep -Fq "\"hy2_state\":\"connected\"" /tmp/hy2route-core-status.json; then grep -Fq "\"hy2_connected\":true" /tmp/hy2route-core-status.json; grep -Eq "\"hy2_last_success\":\"[^\"]+\"" /tmp/hy2route-core-status.json; else grep -Fq "\"hy2_connected\":false" /tmp/hy2route-core-status.json; fi'
 		echo 'core verification passed'
 		;;
 esac

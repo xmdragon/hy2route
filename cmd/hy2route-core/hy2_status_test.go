@@ -58,6 +58,19 @@ func TestHY2StatusIgnoresUnrelatedEvents(t *testing.T) {
 	}
 }
 
+func TestHY2StatusIgnoresFailureOlderThanSuccessfulHandshake(t *testing.T) {
+	now := time.Date(2026, 8, 11, 7, 2, 0, 0, time.UTC)
+	tracker := newHY2StatusTracker(func() time.Time { return now })
+	tracker.Emit(transport.Event{Stage: "hy2.connected", Sequence: 2})
+
+	now = now.Add(time.Second)
+	tracker.Emit(transport.Event{Stage: "hy2.tcp", Sequence: 1})
+	got := tracker.Snapshot()
+	if !got.Connected || got.State != "connected" || got.LastError != "" {
+		t.Fatalf("snapshot = %+v", got)
+	}
+}
+
 func TestApplicationSnapshotReportsHY2Status(t *testing.T) {
 	now := time.Date(2026, 8, 11, 7, 2, 0, 456, time.UTC)
 	tracker := newHY2StatusTracker(func() time.Time { return now })

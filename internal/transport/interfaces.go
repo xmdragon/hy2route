@@ -20,8 +20,9 @@ type PacketSession interface {
 }
 
 type Event struct {
-	Stage  string
-	Reason string
+	Stage    string
+	Reason   string
+	Sequence uint64
 }
 
 type EventSink interface {

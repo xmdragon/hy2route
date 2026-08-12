@@ -9,22 +9,26 @@ import (
 	"time"
 
 	coreclient "github.com/apernet/hysteria/core/v2/client"
+	coreErrs "github.com/apernet/hysteria/core/v2/errors"
 	"github.com/miekg/dns"
 	"github.com/xmdragon/hy2route/internal/config"
+	"github.com/xmdragon/hy2route/internal/transport"
 )
 
 type fakeCoreClient struct {
 	tcpConn   net.Conn
 	tcpTarget string
+	tcpErr    error
 	udpConn   coreclient.HyUDPConn
+	udpErr    error
 }
 
 func (fake *fakeCoreClient) TCP(target string) (net.Conn, error) {
 	fake.tcpTarget = target
-	return fake.tcpConn, nil
+	return fake.tcpConn, fake.tcpErr
 }
 
-func (fake *fakeCoreClient) UDP() (coreclient.HyUDPConn, error) { return fake.udpConn, nil }
+func (fake *fakeCoreClient) UDP() (coreclient.HyUDPConn, error) { return fake.udpConn, fake.udpErr }
 func (fake *fakeCoreClient) Close() error                       { return nil }
 
 type fakeUDP struct{}
@@ -58,6 +62,38 @@ func TestAdapterDelegatesTCPAndUDP(t *testing.T) {
 	packet, err := adapter.OpenPacket(context.Background())
 	if err != nil || packet != fake.udpConn {
 		t.Fatalf("udp = %v, %v", packet, err)
+	}
+}
+
+type recordingEvents struct{ events []transport.Event }
+
+func (events *recordingEvents) Emit(event transport.Event) {
+	events.events = append(events.events, event)
+}
+
+func TestAdapterDoesNotReportTargetDialErrorAsTransportFailure(t *testing.T) {
+	events := &recordingEvents{}
+	adapter := newWithCoreClient(&fakeCoreClient{tcpErr: coreErrs.DialError{Message: "target refused"}}, 1)
+	adapter.events = events
+
+	if _, err := adapter.Dial(context.Background(), "203.0.113.8:443"); err == nil {
+		t.Fatal("dial unexpectedly succeeded")
+	}
+	if len(events.events) != 0 {
+		t.Fatalf("events = %+v", events.events)
+	}
+}
+
+func TestAdapterSequencesTransportFailureFromAttemptStart(t *testing.T) {
+	events := &recordingEvents{}
+	adapter := newWithCoreClient(&fakeCoreClient{tcpErr: coreErrs.ClosedError{}}, 1)
+	adapter.events = events
+
+	if _, err := adapter.Dial(context.Background(), "203.0.113.8:443"); err == nil {
+		t.Fatal("dial unexpectedly succeeded")
+	}
+	if len(events.events) != 1 || events.events[0].Stage != "hy2.tcp" || events.events[0].Sequence == 0 {
+		t.Fatalf("events = %+v", events.events)
 	}
 }
 
