@@ -31,6 +31,7 @@ type application struct {
 	control     *control.Server
 	controlPath string
 	controller  *failover.Controller
+	hy2Status   *hy2StatusTracker
 	learned     *policy.LearningTable
 	dnsOnly     bool
 }
@@ -47,7 +48,8 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 	learner := policy.NewLearningTable(cfg.Limits.LearnedIPEntries)
 	sets := firewall.NewNftSetClient(cfg.Firewall.Table)
 	domestic := dnsproxy.NewNetworkExchanger(cfg.DomesticDNS, cfg.Firewall.BypassMark)
-	hy2Client, err := hy2.New(cfg.HY2, hy2.NewBootstrapResolver(domestic), nil, cfg.Firewall.BypassMark)
+	hy2Status := newHY2StatusTracker(nil)
+	hy2Client, err := hy2.New(cfg.HY2, hy2.NewBootstrapResolver(domestic), hy2Status, cfg.Firewall.BypassMark)
 	if err != nil {
 		return nil, fmt.Errorf("build HY2 transport: %w", err)
 	}
@@ -71,7 +73,7 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 		cfg.Limits.DNSCacheEntries,
 		3*time.Second,
 	)
-	app := &application{dns: dnsproxy.NewServer(cfg.Listen.DNS, resolver), sets: sets, controlPath: cfg.ControlSocket, controller: controller, learned: learner, dnsOnly: dnsOnly}
+	app := &application{dns: dnsproxy.NewServer(cfg.Listen.DNS, resolver), sets: sets, controlPath: cfg.ControlSocket, controller: controller, hy2Status: hy2Status, learned: learner, dnsOnly: dnsOnly}
 	if !dnsOnly {
 		tcpProxy, err := landing.New(cfg.Landing, trustedRoute)
 		if err != nil {
@@ -128,20 +130,31 @@ func (application *application) Run(ctx context.Context) error {
 
 func (application *application) snapshot() control.Snapshot {
 	mode := "proxy"
-	connected := false
 	if application.controller != nil {
 		switch application.controller.Mode() {
 		case failover.DirectCooldown:
-			mode, connected = "fail-open", false
+			mode = "fail-open"
 		case failover.DirectRecovery:
-			mode, connected = "recovery", false
+			mode = "recovery"
 		}
+	}
+	hy2Status := hy2StatusSnapshot{State: "idle"}
+	if application.hy2Status != nil {
+		hy2Status = application.hy2Status.Snapshot()
 	}
 	learned := 0
 	if application.learned != nil {
 		learned = len(application.learned.Snapshot(time.Now()))
 	}
-	return control.Snapshot{Mode: mode, HY2Connected: connected, LearnedIPs: learned, RSSBytes: processRSSBytes()}
+	return control.Snapshot{
+		Mode:           mode,
+		HY2Connected:   hy2Status.Connected,
+		HY2State:       hy2Status.State,
+		HY2LastSuccess: hy2Status.LastSuccess,
+		HY2LastError:   hy2Status.LastError,
+		LearnedIPs:     learned,
+		RSSBytes:       processRSSBytes(),
+	}
 }
 
 func processRSSBytes() uint64 {

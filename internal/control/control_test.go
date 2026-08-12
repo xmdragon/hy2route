@@ -12,7 +12,18 @@ import (
 func TestControlSocketIs0600AndNeverReturnsSecrets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "core.sock")
 	server, err := Listen(path, func() Snapshot {
-		return Snapshot{Mode: "proxy", HY2Connected: true, DNSCache: 12, LearnedIPs: 8, UDPSessions: 2, ActiveTCP: 4, RSSBytes: 25165824}
+		return Snapshot{
+			Mode:           "proxy",
+			HY2Connected:   true,
+			HY2State:       "connected",
+			HY2LastSuccess: "2026-08-11T07:00:00Z",
+			HY2LastError:   "2026-08-11T06:59:00Z",
+			DNSCache:       12,
+			LearnedIPs:     8,
+			UDPSessions:    2,
+			ActiveTCP:      4,
+			RSSBytes:       25165824,
+		}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +49,19 @@ func TestControlSocketIs0600AndNeverReturnsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(raw, []byte(`"ok":true`)) || !bytes.Contains(raw, []byte(`"mode":"proxy"`)) {
+	for _, field := range [][]byte{
+		[]byte(`"ok":true`),
+		[]byte(`"mode":"proxy"`),
+		[]byte(`"hy2_connected":true`),
+		[]byte(`"hy2_state":"connected"`),
+		[]byte(`"hy2_last_success":"2026-08-11T07:00:00Z"`),
+		[]byte(`"hy2_last_error":"2026-08-11T06:59:00Z"`),
+	} {
+		if !bytes.Contains(raw, field) {
+			t.Fatalf("missing %s in response: %s", field, raw)
+		}
+	}
+	if bytes.Contains(raw, []byte("secret-bearing detail must not be retained")) {
 		t.Fatalf("unexpected response: %s", raw)
 	}
 	if bytes.Contains(bytes.ToLower(raw), []byte("auth")) || bytes.Contains(bytes.ToLower(raw), []byte("password")) {

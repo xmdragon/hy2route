@@ -15,13 +15,16 @@ import (
 const maxRequestBytes = 4096
 
 type Snapshot struct {
-	Mode         string `json:"mode"`
-	HY2Connected bool   `json:"hy2_connected"`
-	DNSCache     int    `json:"dns_cache"`
-	LearnedIPs   int    `json:"learned_ips"`
-	UDPSessions  int    `json:"udp_sessions"`
-	ActiveTCP    int    `json:"active_tcp"`
-	RSSBytes     uint64 `json:"rss_bytes"`
+	Mode           string `json:"mode"`
+	HY2Connected   bool   `json:"hy2_connected"`
+	HY2State       string `json:"hy2_state"`
+	HY2LastSuccess string `json:"hy2_last_success,omitempty"`
+	HY2LastError   string `json:"hy2_last_error,omitempty"`
+	DNSCache       int    `json:"dns_cache"`
+	LearnedIPs     int    `json:"learned_ips"`
+	UDPSessions    int    `json:"udp_sessions"`
+	ActiveTCP      int    `json:"active_tcp"`
+	RSSBytes       uint64 `json:"rss_bytes"`
 }
 
 type Server struct {
