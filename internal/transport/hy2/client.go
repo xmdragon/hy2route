@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
-	"sync/atomic"
 
 	coreclient "github.com/apernet/hysteria/core/v2/client"
 	coreErrs "github.com/apernet/hysteria/core/v2/errors"
@@ -20,8 +19,8 @@ import (
 )
 
 type coreClient interface {
-	TCP(string) (net.Conn, error)
-	UDP() (coreclient.HyUDPConn, error)
+	TCP(string) (net.Conn, uint64, error)
+	UDP() (coreclient.HyUDPConn, uint64, error)
 	Close() error
 }
 
@@ -30,10 +29,9 @@ type BootstrapResolver interface {
 }
 
 type Client struct {
-	core     coreClient
-	sem      chan struct{}
-	events   transport.EventSink
-	sequence atomic.Uint64
+	core   coreClient
+	sem    chan struct{}
+	events transport.EventSink
 }
 
 func New(cfg config.HY2Config, bootstrap BootstrapResolver, events transport.EventSink, mark ...uint32) (*Client, error) {
@@ -51,15 +49,9 @@ func New(cfg config.HY2Config, bootstrap BootstrapResolver, events transport.Eve
 		bypassMark = mark[0]
 	}
 	client := &Client{sem: make(chan struct{}, cfg.MaxConcurrentDials), events: events}
-	core, err := coreclient.NewReconnectableClient(func() (*coreclient.Config, error) {
+	client.core = newReconnectableCore(func() (*coreclient.Config, error) {
 		return buildCoreConfig(context.Background(), cfg, bootstrap, bypassMark)
-	}, func(_ coreclient.Client, _ *coreclient.HandshakeInfo, _ int) {
-		events.Emit(client.connectedEvent())
-	}, true)
-	if err != nil {
-		return nil, fmt.Errorf("create HY2 client: %w", err)
-	}
-	client.core = core
+	}, events)
 	return client, nil
 }
 
@@ -71,26 +63,26 @@ func newWithCoreClient(core coreClient, maxConcurrentDials int) *Client {
 }
 
 func (client *Client) Dial(ctx context.Context, target string) (net.Conn, error) {
-	sequence := client.sequence.Add(1)
 	select {
 	case client.sem <- struct{}{}:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 	type result struct {
-		conn net.Conn
-		err  error
+		conn     net.Conn
+		sequence uint64
+		err      error
 	}
 	resultCh := make(chan result, 1)
 	go func() {
-		conn, err := client.core.TCP(target)
-		resultCh <- result{conn: conn, err: err}
+		conn, sequence, err := client.core.TCP(target)
+		resultCh <- result{conn: conn, sequence: sequence, err: err}
 	}()
 	select {
 	case result := <-resultCh:
 		<-client.sem
 		if result.err != nil && isTransportFailure(result.err) {
-			client.events.Emit(transport.Event{Stage: "hy2.tcp", Reason: result.err.Error(), Sequence: sequence})
+			client.events.Emit(transport.Event{Stage: "hy2.tcp", Reason: result.err.Error(), Sequence: result.sequence})
 		}
 		return result.conn, result.err
 	case <-ctx.Done():
@@ -106,11 +98,10 @@ func (client *Client) Dial(ctx context.Context, target string) (net.Conn, error)
 }
 
 func (client *Client) OpenPacket(ctx context.Context) (transport.PacketSession, error) {
-	sequence := client.sequence.Add(1)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	packet, err := client.core.UDP()
+	packet, sequence, err := client.core.UDP()
 	if err != nil {
 		if isTransportFailure(err) {
 			client.events.Emit(transport.Event{Stage: "hy2.udp", Reason: err.Error(), Sequence: sequence})
@@ -121,10 +112,6 @@ func (client *Client) OpenPacket(ctx context.Context) (transport.PacketSession, 
 }
 
 func (client *Client) Close() error { return client.core.Close() }
-
-func (client *Client) connectedEvent() transport.Event {
-	return transport.Event{Stage: "hy2.connected", Reason: "connected", Sequence: client.sequence.Load()}
-}
 
 func isTransportFailure(err error) bool {
 	var dialError coreErrs.DialError

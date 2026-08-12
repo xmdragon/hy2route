@@ -18,6 +18,12 @@ if [ "$dry" = 1 ]; then
 fi
 
 remote() { ssh "root@$router" "$@"; }
+valid_timestamp() {
+	field=$1
+	value="$(printf '%s\n' "$status" | sed -n "s/.*\"$field\":\"\([^\"]*\)\".*/\1/p")"
+	printf '%s\n' "$value" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$'
+	date -u -d "$value" '+%Y-%m-%dT%H:%M:%S' >/dev/null 2>&1
+}
 case "$expect" in
 	legacy)
 		remote 'ps w | grep -q "[/]usr/bin/xray"; nft list table inet hy2route >/dev/null; ! pgrep -f "[/]usr/bin/hy2route-core serve --config /tmp/hy2route/core.json" >/dev/null'
@@ -28,18 +34,20 @@ case "$expect" in
 		remote '! ps w | grep -q "[/]usr/bin/xray"; grep -Fq "server=127.0.0.1#1053" /tmp/dnsmasq.d/hy2route.conf; nft list map inet hy2route core_state >/dev/null'
 		printf '%s\n' "$status" | grep -Fq '"mode"'
 		printf '%s\n' "$status" | grep -Eq '"hy2_state":"(idle|connected|degraded)"'
-		timestamp='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z'
 		case "$status" in
 			*'"hy2_state":"connected"'*)
 				printf '%s\n' "$status" | grep -Fq '"hy2_connected":true'
-				printf '%s\n' "$status" | grep -Eq "\"hy2_last_success\":\"$timestamp\""
+				valid_timestamp hy2_last_success
 				;;
 			*'"hy2_state":"degraded"'*)
 				printf '%s\n' "$status" | grep -Fq '"hy2_connected":false'
-				printf '%s\n' "$status" | grep -Eq "\"hy2_last_error\":\"$timestamp\""
+				valid_timestamp hy2_last_error
 				;;
 			*'"hy2_state":"idle"'*)
 				printf '%s\n' "$status" | grep -Fq '"hy2_connected":false'
+				if printf '%s\n' "$status" | grep -Eq '"hy2_last_(success|error)":'; then
+					exit 1
+				fi
 				;;
 			*) exit 1 ;;
 		esac

@@ -19,17 +19,20 @@ type fakeCoreClient struct {
 	tcpConn   net.Conn
 	tcpTarget string
 	tcpErr    error
+	sequence  uint64
 	udpConn   coreclient.HyUDPConn
 	udpErr    error
 }
 
-func (fake *fakeCoreClient) TCP(target string) (net.Conn, error) {
+func (fake *fakeCoreClient) TCP(target string) (net.Conn, uint64, error) {
 	fake.tcpTarget = target
-	return fake.tcpConn, fake.tcpErr
+	return fake.tcpConn, fake.sequence, fake.tcpErr
 }
 
-func (fake *fakeCoreClient) UDP() (coreclient.HyUDPConn, error) { return fake.udpConn, fake.udpErr }
-func (fake *fakeCoreClient) Close() error                       { return nil }
+func (fake *fakeCoreClient) UDP() (coreclient.HyUDPConn, uint64, error) {
+	return fake.udpConn, fake.sequence, fake.udpErr
+}
+func (fake *fakeCoreClient) Close() error { return nil }
 
 type fakeUDP struct{}
 
@@ -86,23 +89,27 @@ func TestAdapterDoesNotReportTargetDialErrorAsTransportFailure(t *testing.T) {
 
 func TestAdapterSequencesTransportFailureFromAttemptStart(t *testing.T) {
 	events := &recordingEvents{}
-	adapter := newWithCoreClient(&fakeCoreClient{tcpErr: coreErrs.ClosedError{}}, 1)
+	adapter := newWithCoreClient(&fakeCoreClient{tcpErr: coreErrs.ClosedError{}, sequence: 7}, 1)
 	adapter.events = events
 
 	if _, err := adapter.Dial(context.Background(), "203.0.113.8:443"); err == nil {
 		t.Fatal("dial unexpectedly succeeded")
 	}
-	if len(events.events) != 1 || events.events[0].Stage != "hy2.tcp" || events.events[0].Sequence == 0 {
+	if len(events.events) != 1 || events.events[0].Stage != "hy2.tcp" || events.events[0].Sequence != 7 {
 		t.Fatalf("events = %+v", events.events)
 	}
 }
 
-func TestAdapterHandshakeUsesCurrentAttemptSequence(t *testing.T) {
-	adapter := newWithCoreClient(&fakeCoreClient{}, 1)
-	attempt := adapter.sequence.Add(1)
-	event := adapter.connectedEvent()
-	if event.Stage != "hy2.connected" || event.Sequence != attempt {
-		t.Fatalf("event = %+v, attempt = %d", event, attempt)
+func TestAdapterFailureKeepsCoreConnectionSequence(t *testing.T) {
+	events := &recordingEvents{}
+	adapter := newWithCoreClient(&fakeCoreClient{tcpErr: coreErrs.ClosedError{}, sequence: 1}, 2)
+	adapter.events = events
+
+	if _, err := adapter.Dial(context.Background(), "203.0.113.8:443"); err == nil {
+		t.Fatal("dial unexpectedly succeeded")
+	}
+	if len(events.events) != 1 || events.events[0].Sequence != 1 {
+		t.Fatalf("events = %+v", events.events)
 	}
 }
 

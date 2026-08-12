@@ -28,7 +28,9 @@ verify_status '{"mode":"proxy","hy2_connected":false,"hy2_state":"degraded","hy2
 for invalid in \
 	'{"mode":"proxy","hy2_connected":false,"hy2_state":"connected","hy2_last_success":"2026-08-11T07:00:00Z"}' \
 	'{"mode":"proxy","hy2_connected":true,"hy2_state":"connected"}' \
+	'{"mode":"proxy","hy2_connected":true,"hy2_state":"connected","hy2_last_success":"2026-99-11T07:00:00Z"}' \
 	'{"mode":"proxy","hy2_connected":false,"hy2_state":"degraded"}' \
+	'{"mode":"proxy","hy2_connected":false,"hy2_state":"idle","hy2_last_error":"2026-08-11T07:00:00Z"}' \
 	'{"mode":"proxy","hy2_connected":false,"hy2_state":"unknown"}'
 do
 	if verify_status "$invalid"; then
