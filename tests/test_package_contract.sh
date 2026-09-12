@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 grep -Fq 'PKG_VERSION:=0.2.0' Makefile
-grep -Fq 'PKG_RELEASE:=2' Makefile
+grep -Fq 'PKG_RELEASE:=3' Makefile
 grep -Fq '$(INSTALL_BIN) ./build/hy2route-core' Makefile
 grep -Fq '$(INSTALL_DATA) ./build/hy2route-data.bin' Makefile
 ! grep -F 'DEPENDS:=' Makefile | grep -Eq 'xray|chinadns'

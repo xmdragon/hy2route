@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,7 +27,7 @@ func TestHY2StatusTracksConnectionErrorAndRecovery(t *testing.T) {
 	}
 
 	now = now.Add(time.Second)
-	tracker.Emit(transport.Event{Stage: "hy2.tcp", Reason: "secret-bearing detail must not be retained"})
+	tracker.Emit(transport.Event{Stage: "hy2.tcp", Reason: "tls: certificate has expired"})
 	degraded := tracker.Snapshot()
 	if degraded.Connected || degraded.State != "degraded" || degraded.LastError != now.Format(time.RFC3339Nano) {
 		t.Fatalf("degraded = %+v", degraded)
@@ -36,6 +38,49 @@ func TestHY2StatusTracksConnectionErrorAndRecovery(t *testing.T) {
 	recovered := tracker.Snapshot()
 	if !recovered.Connected || recovered.State != "connected" || recovered.LastError != degraded.LastError || recovered.LastSuccess != now.Format(time.RFC3339Nano) {
 		t.Fatalf("recovered = %+v", recovered)
+	}
+}
+
+func TestHY2DiagnosticReasonIsRedactedAndRateLimited(t *testing.T) {
+	now := time.Date(2026, 9, 12, 6, 0, 0, 0, time.UTC)
+	tracker := newHY2StatusTracker(func() time.Time { return now }, "relay-secret", "landing-secret")
+	var logs []string
+	tracker.logf = func(format string, args ...any) { logs = append(logs, fmt.Sprintf(format, args...)) }
+	reason := "tls: certificate has expired\nrelay-secret landing-secret"
+	tracker.Emit(transport.Event{Stage: "hy2.tcp", Reason: reason, Sequence: 2})
+	for i := 0; i < 20; i++ {
+		now = now.Add(time.Second)
+		tracker.Emit(transport.Event{Stage: "hy2.tcp", Reason: reason, Sequence: 2})
+	}
+	got := (&application{hy2Status: tracker}).snapshot()
+	if got.HY2LastErrorReason != "tls: certificate has expired [redacted] [redacted]" || got.HY2LastErrorStage != "hy2.tcp" {
+		t.Fatalf("snapshot = %+v", got)
+	}
+	if len(logs) != 1 || strings.Contains(logs[0], "secret") || !strings.Contains(logs[0], "certificate has expired") {
+		t.Fatalf("logs = %v", logs)
+	}
+	now = now.Add(time.Minute)
+	tracker.Emit(transport.Event{Stage: "hy2.tcp", Reason: reason, Sequence: 2})
+	if len(logs) != 2 {
+		t.Fatalf("periodic log missing: %v", logs)
+	}
+	tracker.Emit(transport.Event{Stage: "hy2.connected", Sequence: 3})
+	tracker.Emit(transport.Event{Stage: "hy2.tcp", Reason: "stale error", Sequence: 2})
+	if tracker.Snapshot().State != "connected" || len(logs) != 2 || tracker.Snapshot().LastErrorReason != got.HY2LastErrorReason {
+		t.Fatalf("stale error replaced recovery: %+v %v", tracker.Snapshot(), logs)
+	}
+	tracker.Emit(transport.Event{Stage: "hy2.udp", Reason: "new failure", Sequence: 3})
+	if len(logs) != 3 {
+		t.Fatalf("new outage not logged: %v", logs)
+	}
+}
+
+func TestHY2DiagnosticReasonIsBoundedWithoutLogging(t *testing.T) {
+	tracker := newHY2StatusTracker(nil)
+	tracker.logf = nil
+	tracker.Emit(transport.Event{Stage: "hy2.udp", Reason: strings.Repeat("错", 2000)})
+	if len([]rune(tracker.Snapshot().LastErrorReason)) != 1027 {
+		t.Fatal("unbounded diagnostic")
 	}
 }
 

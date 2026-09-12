@@ -48,7 +48,10 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 	learner := policy.NewLearningTable(cfg.Limits.LearnedIPEntries)
 	sets := firewall.NewNftSetClient(cfg.Firewall.Table)
 	domestic := dnsproxy.NewNetworkExchanger(cfg.DomesticDNS, cfg.Firewall.BypassMark)
-	hy2Status := newHY2StatusTracker(nil)
+	hy2Status := newHY2StatusTracker(nil, cfg.HY2.Auth, cfg.Landing.Username, cfg.Landing.Password)
+	if cfg.LogLevel == "none" {
+		hy2Status.logf = nil
+	}
 	hy2Client, err := hy2.New(cfg.HY2, hy2.NewBootstrapResolver(domestic), hy2Status, cfg.Firewall.BypassMark)
 	if err != nil {
 		return nil, fmt.Errorf("build HY2 transport: %w", err)
@@ -147,13 +150,15 @@ func (application *application) snapshot() control.Snapshot {
 		learned = len(application.learned.Snapshot(time.Now()))
 	}
 	return control.Snapshot{
-		Mode:           mode,
-		HY2Connected:   hy2Status.Connected,
-		HY2State:       hy2Status.State,
-		HY2LastSuccess: hy2Status.LastSuccess,
-		HY2LastError:   hy2Status.LastError,
-		LearnedIPs:     learned,
-		RSSBytes:       processRSSBytes(),
+		Mode:               mode,
+		HY2Connected:       hy2Status.Connected,
+		HY2State:           hy2Status.State,
+		HY2LastSuccess:     hy2Status.LastSuccess,
+		HY2LastError:       hy2Status.LastError,
+		HY2LastErrorReason: hy2Status.LastErrorReason,
+		HY2LastErrorStage:  hy2Status.LastErrorStage,
+		LearnedIPs:         learned,
+		RSSBytes:           processRSSBytes(),
 	}
 }
 

@@ -3,6 +3,8 @@ package landing
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"time"
@@ -22,7 +24,7 @@ func newSOCKS5(base transport.StreamDialer, server, user, password string) trans
 func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, error) {
 	conn, err := dialer.base.Dial(ctx, dialer.server)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("SOCKS5 upstream dial: %w", err)
 	}
 	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		conn.Close()
@@ -35,12 +37,24 @@ func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, 
 	}
 	if _, err := conn.Write(methods); err != nil {
 		conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("SOCKS5 greeting write: %w", err)
 	}
 	response := make([]byte, 2)
-	if _, err := readFull(conn, response); err != nil || response[0] != 5 || response[1] == 0xff {
+	if _, err := readFull(conn, response); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("SOCKS5 greeting read: %w", err)
+	}
+	if response[0] != 5 {
+		conn.Close()
+		return nil, fmt.Errorf("SOCKS5 greeting: invalid version 0x%02x", response[0])
+	}
+	if response[1] == 0xff {
 		conn.Close()
 		return nil, errors.New("SOCKS5 method rejected")
+	}
+	if response[1] != methods[2] {
+		conn.Close()
+		return nil, fmt.Errorf("SOCKS5 greeting: server selected unoffered method 0x%02x", response[1])
 	}
 	if response[1] == 2 {
 		if len(dialer.user) > 255 || len(dialer.password) > 255 {
@@ -52,11 +66,19 @@ func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, 
 		auth = append(auth, []byte(dialer.password)...)
 		if _, err := conn.Write(auth); err != nil {
 			conn.Close()
-			return nil, err
+			return nil, fmt.Errorf("SOCKS5 authentication write: %w", err)
 		}
-		if _, err := readFull(conn, response); err != nil || response[1] != 0 {
+		if _, err := readFull(conn, response); err != nil {
 			conn.Close()
-			return nil, errors.New("SOCKS5 authentication rejected")
+			return nil, fmt.Errorf("SOCKS5 authentication read: %w", err)
+		}
+		if response[0] != 1 {
+			conn.Close()
+			return nil, fmt.Errorf("SOCKS5 authentication: invalid version 0x%02x", response[0])
+		}
+		if response[1] != 0 {
+			conn.Close()
+			return nil, fmt.Errorf("SOCKS5 authentication rejected (status 0x%02x)", response[1])
 		}
 	}
 	host, portText, err := net.SplitHostPort(target)
@@ -84,12 +106,20 @@ func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, 
 	request = append(request, byte(port>>8), byte(port))
 	if _, err := conn.Write(request); err != nil {
 		conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("SOCKS5 connect write: %w", err)
 	}
 	response = make([]byte, 4)
-	if _, err := readFull(conn, response); err != nil || response[0] != 5 || response[1] != 0 {
+	if _, err := readFull(conn, response); err != nil {
 		conn.Close()
-		return nil, errors.New("SOCKS5 connect rejected")
+		return nil, fmt.Errorf("SOCKS5 connect read: %w", err)
+	}
+	if response[0] != 5 || response[2] != 0 {
+		conn.Close()
+		return nil, errors.New("SOCKS5 connect: invalid reply header")
+	}
+	if response[1] != 0 {
+		conn.Close()
+		return nil, fmt.Errorf("SOCKS5 connect rejected (status 0x%02x)", response[1])
 	}
 	remaining := 0
 	switch response[3] {
@@ -99,7 +129,7 @@ func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, 
 		n := make([]byte, 1)
 		if _, err := readFull(conn, n); err != nil {
 			conn.Close()
-			return nil, err
+			return nil, fmt.Errorf("SOCKS5 connect address length read: %w", err)
 		}
 		remaining = int(n[0])
 	case 4:
@@ -111,18 +141,10 @@ func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, 
 	discard := make([]byte, remaining+2)
 	if _, err := readFull(conn, discard); err != nil {
 		conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("SOCKS5 connect address read: %w", err)
 	}
 	return conn, nil
 }
 func readFull(conn net.Conn, data []byte) (int, error) {
-	total := 0
-	for total < len(data) {
-		n, err := conn.Read(data[total:])
-		total += n
-		if err != nil {
-			return total, err
-		}
-	}
-	return total, nil
+	return io.ReadFull(conn, data)
 }

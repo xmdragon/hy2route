@@ -13,16 +13,18 @@ func TestControlSocketIs0600AndNeverReturnsSecrets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "core.sock")
 	server, err := Listen(path, func() Snapshot {
 		return Snapshot{
-			Mode:           "proxy",
-			HY2Connected:   true,
-			HY2State:       "connected",
-			HY2LastSuccess: "2026-08-11T07:00:00Z",
-			HY2LastError:   "2026-08-11T06:59:00Z",
-			DNSCache:       12,
-			LearnedIPs:     8,
-			UDPSessions:    2,
-			ActiveTCP:      4,
-			RSSBytes:       25165824,
+			Mode:               "proxy",
+			HY2Connected:       true,
+			HY2State:           "connected",
+			HY2LastSuccess:     "2026-08-11T07:00:00Z",
+			HY2LastError:       "2026-08-11T06:59:00Z",
+			HY2LastErrorReason: "tls: certificate has expired",
+			HY2LastErrorStage:  "hy2.tcp",
+			DNSCache:           12,
+			LearnedIPs:         8,
+			UDPSessions:        2,
+			ActiveTCP:          4,
+			RSSBytes:           25165824,
 		}
 	})
 	if err != nil {
@@ -56,6 +58,8 @@ func TestControlSocketIs0600AndNeverReturnsSecrets(t *testing.T) {
 		[]byte(`"hy2_state":"connected"`),
 		[]byte(`"hy2_last_success":"2026-08-11T07:00:00Z"`),
 		[]byte(`"hy2_last_error":"2026-08-11T06:59:00Z"`),
+		[]byte(`"hy2_last_error_reason":"tls: certificate has expired"`),
+		[]byte(`"hy2_last_error_stage":"hy2.tcp"`),
 	} {
 		if !bytes.Contains(raw, field) {
 			t.Fatalf("missing %s in response: %s", field, raw)

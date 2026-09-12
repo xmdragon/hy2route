@@ -4,6 +4,9 @@ repo="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 out="$repo/build"
 mkdir -p "$out"
 commit="$(git -C "$repo" rev-parse --short=12 HEAD)"
+if ! git -C "$repo" diff --quiet HEAD --; then
+	commit="$commit-dirty"
+fi
 toolchain="${HY2ROUTE_GO_TOOLCHAIN:-go1.25.12}"
 (
 	cd "$repo"
