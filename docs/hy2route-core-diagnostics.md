@@ -33,3 +33,16 @@ own errors.
 If one client connects while another reports certificate expiry, compare
 certificate verification settings before replacing credentials or changing
 the transport. Renewing the relay certificate fixes the verification failure.
+
+## DNS policy bypass
+
+Package `0.2.0-4` gives dnsmasq only one default upstream: the core DNS
+listener. Explicit direct domains and relay bootstrap domains still have
+their domain-specific direct upstreams. Domestic/trusted selection and DNS
+fallback remain the core's responsibility.
+
+Previously, dnsmasq also received a default bootstrap DNS server. On the
+router this returned direct DNS answers for Google even while the core and
+the HY2 trusted DNS path returned working answers. Removing this extra
+default upstream and restarting dnsmasq clears the affected cache and keeps
+normal DNS requests within the core's routing policy.
