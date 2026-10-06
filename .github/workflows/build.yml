@@ -26,6 +26,11 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Test startup and reload lifecycle
+        run: |
+          sh tests/test_reload_policy_route.sh
+          sh tests/test_core_startup_dns_failure.sh
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
