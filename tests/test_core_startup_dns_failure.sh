@@ -32,9 +32,10 @@ echo validated >> "$EVENTS"
 [ "$FAIL_VALIDATION" = 0 ]
 CORE
 	chmod +x "$GEN" "$PROG"
+	enabled=1
 	config_value() {
 		case "$1" in
-			enabled) echo 1 ;;
+			enabled) echo "$enabled" ;;
 			fwmark) echo 102 ;;
 			route_table) echo 166 ;;
 		esac
@@ -55,15 +56,28 @@ CORE
 	procd_set_param() { :; }
 	procd_close_instance() { echo instance_registered >> "$EVENTS"; }
 	logger() { echo "$*" >> "$EVENTS"; }
-	# The rc.common wrappers run these callbacks in the same shell.
+	# rc.common submits procd's service definition before calling this hook.
 	stop() { stop_service; echo core_stopped >> "$EVENTS"; }
-	start() { start_service; }
+	start() {
+		start_service
+		echo service_submitted >> "$EVENTS"
+		if type service_started >/dev/null 2>&1; then service_started; fi
+	}
 	case_name=$1
 	# Keep the mocked external command independent of its service arguments.
 	dnsmasq_restart() {
+		grep -q service_submitted "$EVENTS" || {
+			echo 'DNS restarted before procd submission' >&2; return 1
+		}
 		echo dnsmasq_restart >> "$EVENTS"
 		[ "$case_name" = success ]
 	}
+	if [ "$case_name" = disabled_hook ]; then
+		enabled=0
+		service_started
+		! grep -q dnsmasq_restart "$EVENTS"
+		return
+	fi
 	if [ "$case_name" = validation_failure ]; then
 		if reload_service; then echo 'invalid reload accepted' >&2; exit 1; fi
 		! grep -Eq 'core_stopped|instance_registered|firewall_installed' "$EVENTS"
@@ -71,18 +85,24 @@ CORE
 		return
 	fi
 	if [ "$case_name" = startup_failure ]; then
-		start_service
-	else
+		if start; then echo 'DNS activation failure reported as success' >&2; exit 1; fi
+	elif [ "$case_name" = success ]; then
 		reload_service
+		grep -q core_stopped "$EVENTS"
+	else
+		if reload_service; then echo 'DNS activation failure reported as success' >&2; exit 1; fi
 		grep -q core_stopped "$EVENTS"
 	fi
 	test "$(grep -c prepared "$EVENTS")" = 3
 	test "$(grep -c validated "$EVENTS")" = 1
 	grep -q firewall_installed "$EVENTS"
 	grep -q instance_registered "$EVENTS"
+	grep -q service_submitted "$EVENTS"
 	grep -q dnsmasq_restart "$EVENTS"
 	if [ "$case_name" != success ]; then
 		grep -q 'dnsmasq restart failed' "$EVENTS"
+	else
+		! grep -q 'dnsmasq restart failed' "$EVENTS"
 	fi
 )
 
@@ -90,4 +110,5 @@ run_case success
 run_case reload_failure
 run_case startup_failure
 run_case validation_failure
-echo 'core startup and reload survive dnsmasq restart failure'
+run_case disabled_hook
+echo 'DNS activation failures propagate while the core remains supervised'

@@ -69,8 +69,14 @@ start_service() {
 	procd_set_param stdout 0
 	procd_set_param stderr 1
 	procd_close_instance
-	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || \
-		logger -t hy2route 'dnsmasq restart failed; continuing core startup'
+}
+service_started() {
+	[ "$(config_value enabled)" = 1 ] || return 0
+	# rc.common has submitted the supervised core before invoking this hook.
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || {
+		logger -t hy2route 'dnsmasq restart failed; core supervised, DNS activation failed'
+		return 1
+	}
 }
 stop_service() {
 	[ "${KEEP_POLICY:-0}" = 1 ] && return 0
