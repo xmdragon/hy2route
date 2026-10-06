@@ -121,6 +121,14 @@ func TestValidateDefaultsAndSeparatesBypassMark(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsHeartbeatSelectorAsBypassMark(t *testing.T) {
+	cfg := validConfig()
+	cfg.Firewall.BypassMark = 1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("reserved heartbeat selector accepted as bypass mark")
+	}
+}
+
 func TestDecodeRejectsUnknownAndNumericDuration(t *testing.T) {
 	raw := []byte(`{
 		"listen":{"dns":"127.0.0.1:1053","tcp":"127.0.0.1:12345","udp":"127.0.0.1:12346"},

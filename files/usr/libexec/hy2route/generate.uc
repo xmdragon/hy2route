@@ -95,7 +95,8 @@ const smart_dns_port = number(main.smart_dns_port, 65353, 1, 65535, 'smart_dns_p
 const remote_dns = text(main.remote_dns, '8.8.8.8');
 const bootstrap_dns = text(main.bootstrap_dns, '192.168.1.1');
 const fwmark = number(main.fwmark, 102, 1, 2147483647, 'fwmark');
-const bypass_mark = number(main.bypass_mark, fwmark + 1, 1, 2147483647, 'bypass_mark');
+// Mark 1 is reserved for the firewall heartbeat verdict selectors.
+const bypass_mark = number(main.bypass_mark, fwmark + 1, 2, 2147483647, 'bypass_mark');
 const log_level = text(main.log_level, 'warning');
 const udp_policy = text(main.udp_policy, 'proxy');
 const block_ipv6 = boolean(main.block_ipv6, true);
@@ -378,6 +379,23 @@ function emit_xray() {
 	print(sprintf('%J\n', config));
 }
 
+// Static direct routes remain usable during a core failure. Everything that
+// requires the classifier or proxy is blocked until the heartbeat returns.
+function emit_unavailable_rules(local_output) {
+	print('\t\tmeta nfproto != ipv4 return\n');
+	print('\t\tip daddr @bypass4 return\n');
+	if (!local_output && canary_source != '') {
+		print('\t\tudp dport 53 return\n');
+		print('\t\ttcp dport 53 return\n');
+	}
+	print('\t\tip daddr @force_proxy4 meta l4proto { tcp, udp } drop\n');
+	print('\t\tip daddr @force_direct4 return\n');
+	print('\t\tip daddr @inspect4 meta l4proto { tcp, udp } drop\n');
+	print('\t\tip daddr @direct4 return\n');
+	print('\t\tip daddr @china4 return\n');
+	print('\t\tmeta l4proto { tcp, udp } drop\n');
+}
+
 function emit_nft() {
 	const nft_priority = canary_source != '' ? ' - 10' : '';
 	let bypass = [
@@ -409,6 +427,7 @@ function emit_nft() {
 	print('\tset inspect4 {\n\t\ttype ipv4_addr\n\t\tflags timeout\n\t}\n');
 	print('\tmap core_state {\n\t\ttype mark : verdict\n\t\tflags timeout\n\t}\n');
 	print('\tmap output_state {\n\t\ttype mark : verdict\n\t\tflags timeout\n\t}\n');
+	print('\tmap output_guard_state {\n\t\ttype mark : verdict\n\t\tflags timeout\n\t}\n');
 	if (block_ipv6) {
 		print('\tchain block_forward_ipv6 {\n');
 		print('\t\ttype filter hook forward priority -1; policy accept;\n');
@@ -426,7 +445,10 @@ function emit_nft() {
 	print('\t\tfib daddr type local return\n');
 	print('\t\tmeta mark set 1\n');
 	print('\t\tmeta mark vmap @core_state\n');
-	print('\t\treturn\n');
+	print('\t\tjump fail_closed\n');
+	print('\t}\n');
+	print('\tchain fail_closed {\n');
+	emit_unavailable_rules(false);
 	print('\t}\n');
 	print('\tchain active {\n');
 	print('\t\tmeta nfproto != ipv4 return\n');
@@ -456,7 +478,21 @@ function emit_nft() {
 	print('\t\tfib daddr type local return\n');
 	print('\t\tmeta mark set 1\n');
 	print('\t\tmeta mark vmap @output_state\n');
-	print('\t\treturn\n');
+	print('\t\tjump output_fail_closed\n');
+	print('\t}\n');
+	print('\tchain output_fail_closed {\n');
+	emit_unavailable_rules(true);
+	print('\t}\n');
+	print('\tchain output_guard {\n');
+	if (canary_source == '')
+		print('\t\ttype filter hook output priority -110; policy accept;\n');
+	print('\t\tmeta l4proto != tcp return\n');
+	print('\t\tmeta mark ' + bypass_mark + ' return\n');
+	print('\t\tmeta nfproto != ipv4 return\n');
+	print('\t\tfib daddr type local return\n');
+	print('\t\tmeta mark set 1\n');
+	print('\t\tmeta mark vmap @output_guard_state\n');
+	print('\t\tjump output_fail_closed\n');
 	print('\t}\n');
 	print('\tchain output_active {\n');
 	print('\t\tip daddr @bypass4 return\n');

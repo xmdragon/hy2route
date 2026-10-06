@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,11 +15,11 @@ import (
 )
 
 type NftSetClient struct {
-	mu                sync.Mutex
-	table             *nftables.Table
-	direct, inspect   *nftables.Set
-	core, localOutput *nftables.Set
-	states            map[netip.Addr]SetState
+	mu                             sync.Mutex
+	table                          *nftables.Table
+	direct, inspect                *nftables.Set
+	core, localOutput, outputGuard *nftables.Set
+	states                         map[netip.Addr]SetState
 }
 
 func NewNftSetClient(tableName string) *NftSetClient {
@@ -29,6 +30,7 @@ func NewNftSetClient(tableName string) *NftSetClient {
 		inspect:     &nftables.Set{Table: table, Name: "inspect4", KeyType: nftables.TypeIPAddr},
 		core:        &nftables.Set{Table: table, Name: "core_state", KeyType: nftables.TypeMark, DataType: nftables.TypeVerdict, IsMap: true},
 		localOutput: &nftables.Set{Table: table, Name: "output_state", KeyType: nftables.TypeMark, DataType: nftables.TypeVerdict, IsMap: true},
+		outputGuard: &nftables.Set{Table: table, Name: "output_guard_state", KeyType: nftables.TypeMark, DataType: nftables.TypeVerdict, IsMap: true},
 		states:      make(map[netip.Addr]SetState),
 	}
 }
@@ -76,18 +78,21 @@ func (c *NftSetClient) Heartbeat(ctx context.Context, ttl time.Duration) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	var batch strings.Builder
 	for _, heartbeat := range []struct {
-		set, chain string
+		set, verdict string
 	}{
-		{set: c.core.Name, chain: "active"},
-		{set: c.localOutput.Name, chain: "output_active"},
+		{set: c.core.Name, verdict: "jump active"},
+		{set: c.localOutput.Name, verdict: "jump output_active"},
+		{set: c.outputGuard.Name, verdict: "accept"},
 	} {
-		delete := exec.CommandContext(ctx, "nft", fmt.Sprintf("delete element inet %s %s { 0x00000001 }", c.table.Name, heartbeat.set))
-		_, _ = delete.CombinedOutput()
-		command := exec.CommandContext(ctx, "nft", fmt.Sprintf("add element inet %s %s { 0x00000001 timeout %s : jump %s }", c.table.Name, heartbeat.set, clampTTL(ttl), heartbeat.chain))
-		if output, err := command.CombinedOutput(); err != nil {
-			return fmt.Errorf("nft heartbeat %s: %w: %s", heartbeat.set, err, output)
-		}
+		fmt.Fprintf(&batch, "flush map inet %s %s\n", c.table.Name, heartbeat.set)
+		fmt.Fprintf(&batch, "add element inet %s %s { 0x00000001 timeout %s : %s }\n", c.table.Name, heartbeat.set, clampTTL(ttl), heartbeat.verdict)
+	}
+	command := exec.CommandContext(ctx, "nft", "-f", "-")
+	command.Stdin = strings.NewReader(batch.String())
+	if output, err := command.CombinedOutput(); err != nil {
+		return fmt.Errorf("nft heartbeat: %w: %s", err, output)
 	}
 	return nil
 }
