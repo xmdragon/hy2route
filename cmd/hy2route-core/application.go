@@ -118,7 +118,7 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 		if cfg.UDPPolicy == "block" {
 			udpProxy = transport.BlockPacketDialer{}
 		}
-		app.tcp = &dataplane.TCPServer{ListenAddr: cfg.Listen.TCP, Classifier: classifier, Learned: learner, Direct: direct, Proxy: tcpProxy, Sniff: dataplaneSniff(cfg), MaxActive: cfg.Limits.TCPSessions}
+		app.tcp = &dataplane.TCPServer{ListenAddr: cfg.Listen.TCP, Classifier: classifier, Learned: learner, Direct: direct, Proxy: tcpProxy, Sniff: dataplaneSniff(cfg), MaxActive: cfg.Limits.TCPSessions, DomainDial: cfg.TCPDomainDial}
 		app.udp = &dataplane.UDPServer{ListenAddr: cfg.Listen.UDP, Classifier: classifier, Learned: learner, Direct: directPacket, Proxy: udpProxy, Sessions: dataplane.NewSessionTable(cfg.Limits.UDPSessions, cfg.Limits.UDPIdle.Value())}
 	}
 	return app, nil
