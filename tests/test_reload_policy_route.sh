@@ -33,6 +33,30 @@ run_case() (
 	stop() { echo stopped >> "$events"; }
 	start() { echo started >> "$events"; }
 	case "$1" in
+		prepared_reload|normal_start)
+			prepare_config() {
+				if grep -q validated "$events"; then
+					echo 'configuration prepared twice' >&2; return 1
+				fi
+				echo validated >> "$events"
+			}
+			# Stop before filesystem/procd work; only exercise the preparation path.
+			ip() {
+				case "$*" in
+					'rule show') printf '%s\n' "$existing_rule" ;;
+					*) echo "ip $*" >> "$events"; return 1 ;;
+				esac
+			}
+			start() { echo started >> "$events"; start_service; }
+			if [ "$1" = prepared_reload ]; then
+				if reload_service; then exit 1; fi
+				grep -q stopped "$events"
+			else
+				if start_service; then exit 1; fi
+			fi
+			test "$(grep -c validated "$events")" = 1
+			grep -q '^ip route replace ' "$events"
+			;;
 		changed_mark|changed_table)
 			if reload_service; then echo 'incompatible reload accepted' >&2; exit 1; fi
 			! grep -Eq 'stopped|started|^ip ' "$events"
@@ -65,4 +89,6 @@ run_case start_mismatch 102 167 "$rule"
 run_case matching 102 166 "$rule"
 run_case absent 102 166 ''
 run_case disabled 104 167 "$rule" 0
+run_case prepared_reload 102 166 "$rule"
+run_case normal_start 102 166 "$rule"
 echo 'reload policy-route preflight passed'
