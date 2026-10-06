@@ -15,6 +15,7 @@ import (
 const maxRequestBytes = 4096
 
 type Snapshot struct {
+	UDPViaLanding      bool   `json:"udp_via_landing,omitempty"`
 	TCPTransport       string `json:"tcp_transport,omitempty"`
 	UDPTransport       string `json:"udp_transport,omitempty"`
 	Mode               string `json:"mode"`

@@ -43,6 +43,8 @@ config vless 'tcp_relay'
 	option spider_x ''
 
 config landing 'landing'
+	option udp '0'
+	option udp_max_payload '0'
 	option type 'socks'
 	option server 'REPLACE_WITH_LANDING_IP_OR_DOMAIN'
 	option port '443'

@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hy2route
 PKG_VERSION:=0.2.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 PKG_LICENSE:=MIT GPL-3.0-or-later
 
 include $(INCLUDE_DIR)/package.mk

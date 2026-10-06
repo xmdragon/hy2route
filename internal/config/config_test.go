@@ -197,3 +197,20 @@ func TestValidateRealityRelay(t *testing.T) {
 		})
 	}
 }
+
+func TestUDPLandingRequiresSOCKSAndValidPayloadLimit(t *testing.T) {
+	cfg := validConfig()
+	cfg.Landing = LandingConfig{Type: "http", Server: "proxy.example:443", UDP: true}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("HTTP UDP landing accepted")
+	}
+	cfg.Landing.Type = "socks5"
+	cfg.Landing.MaxUDPPayload = 2038
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Landing.MaxUDPPayload = 65508
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("invalid UDP payload limit accepted")
+	}
+}

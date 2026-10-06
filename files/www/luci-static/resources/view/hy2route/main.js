@@ -37,7 +37,7 @@ return view.extend({
 		var m, s, o;
 
 		m = new form.Map('hy2route', 'HY2Route',
-			_('透明代理：TCP 可经 VLESS 中转到 SOCKS/HTTP 落地，UDP 直接从 HY2 中转出站。中国大陆 IPv4 默认直连。'));
+			_('透明代理：TCP 可经 VLESS 中转到落地；UDP 优先经 HY2，可继续经 SOCKS5 落地出站。中国大陆 IPv4 默认直连。'));
 
 		s = m.section(form.NamedSection, 'main', 'main', _('基本设置'));
 		s.tab('general', _('常规'));
@@ -52,7 +52,7 @@ return view.extend({
 		o.default = o.enabled;
 
 		o = s.taboption('general', form.ListValue, 'udp_policy', _('UDP 策略'),
-			_('代理 UDP 直接从 HY2 中转出站，不经过 SOCKS/HTTP 落地。'));
+			_('代理 UDP 优先经 HY2；可在落地设置中启用 SOCKS5 UDP 出站。'));
 		o.value('proxy', _('代理'));
 		o.value('direct', _('直连'));
 		o.value('block', _('阻止'));
@@ -174,7 +174,7 @@ return view.extend({
 		s = m.section(form.NamedSection, 'tcp_relay', 'vless', _('VLESS TCP 中转'));
 
 		o = s.option(form.Flag, 'enabled', _('启用 TCP 中转'),
-			_('TCP 和远程 DNS 优先使用 Reality，失败时回退 HY2；UDP 优先使用 HY2，失败时回退 Reality。UDP 始终跳过落地。'));
+			_('TCP 和远程 DNS 优先使用 Reality，失败时回退 HY2；UDP 优先使用 HY2，失败时回退 Reality。UDP 是否经落地由落地代理设置决定。'));
 		o.default = o.disabled;
 
 		o = s.option(form.Value, 'server', _('服务器'));
@@ -238,6 +238,14 @@ return view.extend({
 		o.value('http', _('HTTP'));
 		o.default = 'socks';
 		o.rmempty = false;
+
+		o = s.option(form.Flag, 'udp', _('UDP 经落地出站'), _('需要落地支持 SOCKS5 UDP ASSOCIATE；启用后落地拒绝 UDP 时连接失败。'));
+		o.default = o.disabled;
+		o.depends('type', 'socks');
+		o = s.option(form.Value, 'udp_max_payload', _('UDP 报文上限（字节）'), _('0 表示不限制。可按服务商的实际 UDP 上限设置，避免大报文被截断。'));
+		o.datatype = 'range(0,65507)';
+		o.default = '0';
+		o.depends('udp', '1');
 
 		o = s.option(form.Value, 'server', _('服务器'));
 		o.datatype = 'host';

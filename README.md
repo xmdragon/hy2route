@@ -5,18 +5,24 @@ A small OpenWrt transparent proxy with protocol-specific relay paths:
 ```text
 TCP: LAN -> VLESS Reality relay -> SOCKS5/HTTP landing -> Internet
      fallback: LAN -> HY2 relay -> the same landing -> Internet
-UDP: LAN -> HY2 relay -> Internet
-     fallback: LAN -> VLESS Reality (XUDP) relay -> Internet
+UDP: LAN -> HY2 relay -> optional SOCKS5 UDP landing -> Internet
+     fallback: LAN -> VLESS Reality (XUDP) relay -> the same UDP landing -> Internet
 DNS: domestic DNS directly; trusted DNS over the relay, without the landing
 ```
 
 The optional `tcp_relay` is disabled by default. Without it, TCP continues to
-use HY2 followed by the landing. UDP always skips the landing: a SOCKS5 proxy
-that accepts TCP does not necessarily support UDP ASSOCIATE, and HTTP CONNECT
-landings carry TCP only. TCP and UDP may therefore have different public exit
-IPs. For sites requiring a single landing IP, disable HTTP/3 in the client or
-add an explicit QUIC restriction for that site's traffic; no global QUIC block
-is installed by this package.
+use HY2 followed by the landing. Set `landing.udp=1` to send proxied UDP
+through the SOCKS5 landing too. This requires UDP ASSOCIATE support; rejected
+associations fail instead of silently using relay-only egress. HTTP CONNECT
+landings cannot carry this UDP path. The default `landing.udp=0` preserves
+relay-only UDP egress for existing configurations.
+
+Sessions are keyed by both source and destination, so each target has its own
+UDP association. This also handles landings that pin an association to its
+first destination. `landing.udp_max_payload` rejects oversized payloads before
+sending them; zero disables the limit. Choose the limit from an actual echo
+test: some landings truncate packets because their receive buffer includes the
+SOCKS header. With IPv4, a 2,048-byte buffer leaves 2,038 bytes for the payload.
 
 ## Routing and DNS
 
@@ -62,7 +68,7 @@ Use LuCI **Services → hy2route**, or edit `/etc/config/hy2route`:
 - `relay`: HY2 server, port, authentication and certificate SNI.
 - `tcp_relay`: optional VLESS Reality server, UUID (`id`), server name,
   X25519 public key (`reality_password`), short ID, fingerprint and Vision flow.
-- `landing`: SOCKS5 or HTTP server and credentials.
+- `landing`: SOCKS5 or HTTP server, credentials, optional UDP egress and payload limit.
 - `main`: UDP policy, DNS, bypass marks, resource limits and fail-open behavior.
 - `rule`: explicit direct/proxy IPv4 CIDR or domain rules.
 
@@ -125,7 +131,7 @@ provenance, the reproduction and the cross-implementation test requirement.
 
 Back up the router configuration and installed artifacts before switching.
 First probe a staged config with both transports. Verify TCP exits from the
-landing and UDP works through each relay. Inject unavailable relay addresses
+landing and UDP works through each relay and the selected landing policy. Inject unavailable relay addresses
 only into staged configs to check both fallback paths and the both-down case.
 
 For a migration, switch HY2 to the new relay first, then enable `tcp_relay`.
@@ -143,3 +149,9 @@ Specify `-InterfaceIndex` when multiple adapters use the same router gateway.
 `-V2rayConfig` is optional and must identify the active installation; other VPN
 applications are not stopped. Wi-Fi remains available as a lower-priority
 connection. The script prints the backup directory for rollback.
+
+If a separate LAN VPN client sends HY2 to a relay on UDP/443, an existing
+OpenWrt `Block-LAN-QUIC-UDP443` forwarding rule can reject those packets even
+when router-originated HY2 works. Place a narrow LAN-to-WAN UDP/443 allow rule
+for the configured relay addresses before that QUIC rule. Keep this distinct
+from transparent application UDP, which is handled by the core.

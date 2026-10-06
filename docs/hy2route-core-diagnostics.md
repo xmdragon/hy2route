@@ -65,3 +65,21 @@ With `main.fail_open=0`, both relays being unavailable fails proxied requests
 instead of selecting the local network as a third path. Domestic and explicit
 direct rules remain direct. `udp_policy=direct|block` is now also honored by
 the custom core.
+
+## SOCKS5 UDP landing (0.2.0-6)
+
+Enable `landing.udp=1` to keep proxied UDP on the configured SOCKS5 landing.
+`udp_via_landing=true` in status confirms the selected policy. HY2/Reality
+fallback still changes only the intermediate relay: neither a rejected UDP
+association nor a malformed landing reply triggers relay-only egress.
+
+The UDP association's TCP control stream is kept open until the session
+closes. Each source/destination pair has a separate association, and changing
+a destination on an existing association is rejected. This avoids providers
+that keep forwarding later datagrams to the first destination.
+
+Use `landing.udp_max_payload` to protect a verified provider limit. For
+example, a service with a 2,048-byte SOCKS5 UDP receive buffer may truncate
+IPv4 payloads larger than 2,038 bytes. The core rejects oversized payloads
+instead of sending data known to be silently truncated. Zero disables the
+limit; the appropriate value depends on the landing's actual behavior.

@@ -21,16 +21,19 @@ func newSOCKS5(base transport.StreamDialer, server, user, password string) trans
 	return &socks5Dialer{base, server, user, password}
 }
 
-func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, error) {
+func (dialer *socks5Dialer) authenticatedConn(ctx context.Context) (net.Conn, error) {
 	conn, err := dialer.base.Dial(ctx, dialer.server)
 	if err != nil {
 		return nil, fmt.Errorf("SOCKS5 upstream dial: %w", err)
 	}
-	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	deadline := time.Now().Add(5 * time.Second)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
 		conn.Close()
 		return nil, err
 	}
-	defer conn.SetDeadline(time.Time{})
 	methods := []byte{5, 1, 0}
 	if dialer.user != "" || dialer.password != "" {
 		methods = []byte{5, 1, 2}
@@ -81,6 +84,15 @@ func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, 
 			return nil, fmt.Errorf("SOCKS5 authentication rejected (status 0x%02x)", response[1])
 		}
 	}
+	return conn, nil
+}
+
+func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, error) {
+	conn, err := dialer.authenticatedConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.SetDeadline(time.Time{})
 	host, portText, err := net.SplitHostPort(target)
 	if err != nil {
 		conn.Close()
@@ -108,7 +120,7 @@ func (dialer *socks5Dialer) Dial(ctx context.Context, target string) (net.Conn, 
 		conn.Close()
 		return nil, fmt.Errorf("SOCKS5 connect write: %w", err)
 	}
-	response = make([]byte, 4)
+	response := make([]byte, 4)
 	if _, err := readFull(conn, response); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("SOCKS5 connect read: %w", err)

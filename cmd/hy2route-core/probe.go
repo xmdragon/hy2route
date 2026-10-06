@@ -62,6 +62,13 @@ func runProbe(args []string, stdout, stderr io.Writer) int {
 			}
 			base, packet = client, client
 		}
+		if cfg.Landing.UDP {
+			packet, err = landing.NewPacket(cfg.Landing, base, packet)
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return 1
+			}
+		}
 		stream, err = landing.New(cfg.Landing, base)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -135,6 +142,7 @@ func runProbe(args []string, stdout, stderr io.Writer) int {
 	result["elapsed_ms"] = time.Since(start).Milliseconds()
 	result["tcp_transport"] = app.snapshot().TCPTransport
 	result["udp_transport"] = app.snapshot().UDPTransport
+	result["udp_via_landing"] = cfg.Landing.UDP
 	if *relay != "auto" {
 		result[*network+"_transport"] = *relay
 	}

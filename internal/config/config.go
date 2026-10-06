@@ -73,10 +73,12 @@ type TCPRelayConfig struct {
 }
 
 type LandingConfig struct {
-	Type     string `json:"type"`
-	Server   string `json:"server"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	UDP           bool   `json:"udp,omitempty"`
+	MaxUDPPayload int    `json:"max_udp_payload,omitempty"`
+	Type          string `json:"type"`
+	Server        string `json:"server"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
 }
 
 type LimitsConfig struct {
@@ -325,6 +327,12 @@ func setWindowDefaults(h *HY2Config) {
 }
 
 func (c Config) validateLanding() error {
+	if c.Landing.UDP && c.Landing.Type != "socks5" {
+		return errors.New("landing UDP requires socks5 with UDP ASSOCIATE support")
+	}
+	if c.Landing.MaxUDPPayload < 0 || c.Landing.MaxUDPPayload > 65507 {
+		return errors.New("landing max_udp_payload must be between 0 and 65507")
+	}
 	switch c.Landing.Type {
 	case "direct":
 		if c.Landing.Server != "" || c.Landing.Username != "" || c.Landing.Password != "" {

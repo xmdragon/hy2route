@@ -25,19 +25,20 @@ import (
 )
 
 type application struct {
-	dns         *dnsproxy.Server
-	tcp         *dataplane.TCPServer
-	udp         *dataplane.UDPServer
-	sets        firewall.SetClient
-	control     *control.Server
-	controlPath string
-	controller  *failover.Controller
-	hy2Status   *hy2StatusTracker
-	learned     *policy.LearningTable
-	tcpRelay    *transport.RelayFallback
-	udpRelay    *transport.PacketRelayFallback
-	hy2Client   *hy2.Client
-	dnsOnly     bool
+	dns           *dnsproxy.Server
+	tcp           *dataplane.TCPServer
+	udp           *dataplane.UDPServer
+	sets          firewall.SetClient
+	control       *control.Server
+	controlPath   string
+	controller    *failover.Controller
+	hy2Status     *hy2StatusTracker
+	learned       *policy.LearningTable
+	tcpRelay      *transport.RelayFallback
+	udpRelay      *transport.PacketRelayFallback
+	hy2Client     *hy2.Client
+	udpViaLanding bool
+	dnsOnly       bool
 }
 
 func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
@@ -104,6 +105,13 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 			return nil, fmt.Errorf("build landing transport: %w", err)
 		}
 		udpProxy := udpRoute
+		if cfg.Landing.UDP {
+			udpProxy, err = landing.NewPacket(cfg.Landing, trustedRoute, udpRoute)
+			if err != nil {
+				return nil, err
+			}
+			app.udpViaLanding = cfg.UDPPolicy == "proxy"
+		}
 		if cfg.UDPPolicy == "direct" {
 			udpProxy = directPacket
 		}
@@ -185,7 +193,7 @@ func (application *application) snapshot() control.Snapshot {
 		udpTransport = application.udpRelay.Active()
 	}
 	return control.Snapshot{
-		TCPTransport: tcpTransport, UDPTransport: udpTransport,
+		TCPTransport: tcpTransport, UDPTransport: udpTransport, UDPViaLanding: application.udpViaLanding,
 		Mode:               mode,
 		HY2Connected:       hy2Status.Connected,
 		HY2State:           hy2Status.State,

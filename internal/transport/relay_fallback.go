@@ -64,7 +64,7 @@ func (d *RelayFallback) Dial(ctx context.Context, target string) (net.Conn, erro
 func (d *RelayFallback) Active() string { d.mu.Lock(); defer d.mu.Unlock(); return d.active }
 
 // PacketRelayFallback uses HY2 by default and VLESS XUDP only during HY2
-// failures. Neither path ever involves the TCP-only landing proxy.
+// failures. An optional SOCKS5 UDP landing can wrap both relay paths.
 type PacketRelayFallback struct {
 	primary, backup PacketDialer
 	cooldown        time.Duration
