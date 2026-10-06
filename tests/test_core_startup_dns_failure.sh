@@ -12,6 +12,8 @@ run_case() (
 	EVENTS="$work/$1.events"
 	export EVENTS
 	: > "$EVENTS"
+	# A failed attempt must not reuse a previous successful registration marker.
+	CORE_REGISTERED=1
 	RUNDIR="$work/$1"
 	mkdir "$RUNDIR"
 	echo previous > "$RUNDIR/core.json"
@@ -43,23 +45,33 @@ CORE
 	ip() {
 		case "$*" in
 			'-N rule show') echo '10066: from all fwmark 0x66 lookup 166' ;;
-			*) echo route_installed >> "$EVENTS" ;;
+			*)
+				case "$case_name" in *_route_failure) return 1 ;; esac
+				echo route_installed >> "$EVENTS"
+				;;
 		esac
 	}
 	nft() {
 		case "$1" in
-			-f) echo firewall_installed >> "$EVENTS" ;;
+			-f)
+				case "$case_name" in *_nft_failure) return 1 ;; esac
+				echo firewall_installed >> "$EVENTS"
+				;;
 		esac
 	}
 	passwall2_running() { return 1; }
 	procd_open_instance() { echo instance_opened >> "$EVENTS"; }
 	procd_set_param() { :; }
-	procd_close_instance() { echo instance_registered >> "$EVENTS"; }
+	procd_close_instance() {
+		case "$case_name" in *_registration_failure) return 1 ;; esac
+		echo instance_registered >> "$EVENTS"
+	}
 	logger() { echo "$*" >> "$EVENTS"; }
 	# rc.common submits procd's service definition before calling this hook.
 	stop() { stop_service; echo core_stopped >> "$EVENTS"; }
 	start() {
-		start_service
+		# rc_procd's successful submission masks a failed start_service callback.
+		start_service || :
 		echo service_submitted >> "$EVENTS"
 		if type service_started >/dev/null 2>&1; then service_started; fi
 	}
@@ -70,7 +82,10 @@ CORE
 			echo 'DNS restarted before procd submission' >&2; return 1
 		}
 		echo dnsmasq_restart >> "$EVENTS"
-		[ "$case_name" = success ]
+		case "$case_name" in
+			success|*_route_failure|*_nft_failure|*_registration_failure) return 0 ;;
+			*) return 1 ;;
+		esac
 	}
 	if [ "$case_name" = disabled_hook ]; then
 		enabled=0
@@ -84,6 +99,22 @@ CORE
 		test "$(cat "$RUNDIR/core.json")" = previous
 		return
 	fi
+	case "$case_name" in
+		*_route_failure|*_nft_failure|*_registration_failure)
+			case "$case_name" in
+				startup_*)
+					if start; then echo 'failed core startup reported as success' >&2; exit 1; fi
+					;;
+				reload_*)
+					if reload_service; then echo 'failed core reload reported as success' >&2; exit 1; fi
+					grep -q core_stopped "$EVENTS"
+					;;
+			esac
+			grep -q service_submitted "$EVENTS"
+			! grep -Eq 'instance_registered|dnsmasq_restart' "$EVENTS"
+			return
+			;;
+	esac
 	if [ "$case_name" = startup_failure ]; then
 		if start; then echo 'DNS activation failure reported as success' >&2; exit 1; fi
 	elif [ "$case_name" = success ]; then
@@ -111,4 +142,10 @@ run_case reload_failure
 run_case startup_failure
 run_case validation_failure
 run_case disabled_hook
+run_case startup_route_failure
+run_case reload_route_failure
+run_case startup_nft_failure
+run_case reload_nft_failure
+run_case startup_registration_failure
+run_case reload_registration_failure
 echo 'DNS activation failures propagate while the core remains supervised'
