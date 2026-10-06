@@ -95,7 +95,8 @@ const smart_dns_port = number(main.smart_dns_port, 65353, 1, 65535, 'smart_dns_p
 const remote_dns = text(main.remote_dns, '8.8.8.8');
 const bootstrap_dns = text(main.bootstrap_dns, '192.168.1.1');
 const fwmark = number(main.fwmark, 102, 1, 2147483647, 'fwmark');
-const bypass_mark = number(main.bypass_mark, fwmark + 1, 1, 2147483647, 'bypass_mark');
+// Mark 1 is reserved for the firewall heartbeat verdict selectors.
+const bypass_mark = number(main.bypass_mark, fwmark + 1, 2, 2147483647, 'bypass_mark');
 const log_level = text(main.log_level, 'warning');
 const udp_policy = text(main.udp_policy, 'proxy');
 const block_ipv6 = boolean(main.block_ipv6, true);

@@ -79,8 +79,8 @@ reload_service() {
 		return
 	fi
 	# Reject an invalid reload before interrupting the current instances.
-	prepare_config || return 1
 	check_policy_route || return 1
+	prepare_config || return 1
 	KEEP_POLICY=1
 	stop
 	start

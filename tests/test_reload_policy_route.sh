@@ -26,7 +26,9 @@ run_case() (
 		esac
 	}
 	logger() { echo diagnostic >> "$events"; }
-	prepare_config() { echo validated >> "$events"; }
+	live_config="$work/$1.core.json"
+	echo original > "$live_config"
+	prepare_config() { echo validated >> "$events"; echo rejected > "$live_config"; }
 	passwall2_running() { return 1; }
 	stop() { echo stopped >> "$events"; }
 	start() { echo started >> "$events"; }
@@ -35,6 +37,7 @@ run_case() (
 			if reload_service; then echo 'incompatible reload accepted' >&2; exit 1; fi
 			! grep -Eq 'stopped|started|^ip ' "$events"
 			grep -q diagnostic "$events"
+			test "$(cat "$live_config")" = original
 			;;
 		start_mismatch)
 			if start_service; then echo 'incompatible start accepted' >&2; exit 1; fi

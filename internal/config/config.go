@@ -384,6 +384,9 @@ func (c Config) validateFirewall() error {
 	if c.Firewall.BypassMark == c.Firewall.Mark {
 		return errors.New("firewall bypass_mark must differ from mark")
 	}
+	if c.Firewall.BypassMark == 1 {
+		return errors.New("firewall bypass_mark 1 is reserved for heartbeat selectors")
+	}
 	if c.Firewall.CanarySource == "" {
 		return nil
 	}

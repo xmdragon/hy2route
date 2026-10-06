@@ -34,4 +34,13 @@ awk '/chain fail_closed \{/,/^\t}/' "$work/nft.conf" > "$work/failure.conf"
 grep -q 'ip daddr @force_proxy4.*drop' "$work/failure.conf"
 grep -q 'ip daddr @force_direct4 return' "$work/failure.conf"
 grep -q 'ip daddr @china4 return' "$work/failure.conf"
+uci -c "$work/uci" set hy2route.main.bypass_mark=1
+uci -c "$work/uci" commit hy2route
+for mode in core nft; do
+	if "$generator" "$mode" > "$work/invalid.$mode" 2> "$work/error"; then
+		echo 'reserved heartbeat selector accepted as bypass mark' >&2; exit 1
+	fi
+	test ! -s "$work/invalid.$mode"
+	grep -q bypass_mark "$work/error"
+done
 echo 'fail-closed generated configuration passed'
