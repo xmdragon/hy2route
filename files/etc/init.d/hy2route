@@ -18,6 +18,16 @@ remove_network_rules() {
 	table="$(config_value route_table)"; [ -n "$table" ] && ip route flush table "$table" >/dev/null 2>&1 || true
 }
 restore_dnsmasq() { rm -f "$DNSMASQ_SNIPPET"; /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true; }
+check_policy_route() {
+	existing="$(ip rule show | grep "^$RULE_PRIORITY:" || true)"
+	[ -n "$existing" ] || return 0
+	mark_hex="$(printf '0x%x' "$(config_value fwmark)")"
+	table="$(config_value route_table)"
+	case "$existing " in
+		*"fwmark $mark_hex lookup $table "*) return 0 ;;
+		*) logger -t hy2route 'policy route changed; restart required'; return 1 ;;
+	esac
+}
 prepare_config() {
 	mkdir -p -m 700 "$RUNDIR" /tmp/dnsmasq.d || return 1
 	"$GEN" core > "$RUNDIR/core.json.new" || return 1
@@ -34,17 +44,11 @@ start_service() {
 	[ "$(config_value enabled)" = 1 ] || return 0
 	if passwall2_running; then logger -t hy2route 'Passwall2 is running; refusing competing rules'; return 1; fi
 	prepare_config || { logger -t hy2route 'core configuration validation failed'; return 1; }
+	check_policy_route || return 1
 	mark="$(config_value fwmark)"; table="$(config_value route_table)"
 	ip route replace local 0.0.0.0/0 dev lo table "$table" || return 1
 	if ! ip rule show | grep -q "^$RULE_PRIORITY:"; then
 		ip rule add priority "$RULE_PRIORITY" fwmark "$mark" lookup "$table" || return 1
-	else
-		existing="$(ip rule show | grep "^$RULE_PRIORITY:")"
-		mark_hex="$(printf '0x%x' "$mark")"
-		case "$existing" in
-			*"fwmark $mark_hex lookup $table"*) ;;
-			*) logger -t hy2route 'policy route changed; restart required'; return 1 ;;
-		esac
 	fi
 	: > "$RUNDIR/apply.nft"
 	if nft list table inet hy2route >/dev/null 2>&1; then
@@ -76,6 +80,7 @@ reload_service() {
 	fi
 	# Reject an invalid reload before interrupting the current instances.
 	prepare_config || return 1
+	check_policy_route || return 1
 	KEEP_POLICY=1
 	stop
 	start
