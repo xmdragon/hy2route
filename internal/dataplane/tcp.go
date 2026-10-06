@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/apernet/go-tproxy"
 	"github.com/xmdragon/hy2route/internal/policy"
 	"github.com/xmdragon/hy2route/internal/sniff"
 	"github.com/xmdragon/hy2route/internal/transport"
@@ -34,7 +33,7 @@ func (server *TCPServer) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	listener, err := tproxy.ListenTCP("tcp4", addr)
+	listener, err := listenTransparentTCP("tcp4", addr)
 	if err != nil {
 		return err
 	}

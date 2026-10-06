@@ -50,6 +50,10 @@ func (server *UDPServer) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := prepareListener(conn); err != nil {
+		_ = conn.Close()
+		return err
+	}
 	defer conn.Close()
 	if server.Ready != nil {
 		close(server.Ready)

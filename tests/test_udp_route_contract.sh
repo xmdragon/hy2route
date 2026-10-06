@@ -49,7 +49,7 @@ reject_literal "landing_type == 'socks' && udp_policy == 'proxy'"
 reject_literal "ip daddr @force_proxy4 meta l4proto udp drop"
 
 line_number() {
-	grep -nF "$1" "$generator" | head -n 1 | cut -d: -f1
+	sed -n '/^function emit_nft()/,/^function emit_chinadns()/p' "$generator" | grep -nF "$1" | head -n 1 | cut -d: -f1
 }
 
 force_proxy_line="$(line_number 'ip daddr @force_proxy4 meta l4proto udp tproxy')"
