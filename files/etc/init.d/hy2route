@@ -19,7 +19,7 @@ remove_network_rules() {
 }
 restore_dnsmasq() { rm -f "$DNSMASQ_SNIPPET"; /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true; }
 check_policy_route() {
-	existing="$(ip rule show | awk -v priority="$RULE_PRIORITY:" '$1 == priority { $1=$1; print }')"
+	existing="$(ip -N rule show | awk -v priority="$RULE_PRIORITY:" '$1 == priority { $1=$1; print }')"
 	[ -n "$existing" ] || return 0
 	mark_hex="$(printf '0x%x' "$(config_value fwmark)")"
 	table="$(config_value route_table)"
@@ -51,7 +51,7 @@ start_service() {
 	fi
 	mark="$(config_value fwmark)"; table="$(config_value route_table)"
 	ip route replace local 0.0.0.0/0 dev lo table "$table" || return 1
-	if ! ip rule show | grep -q "^$RULE_PRIORITY:"; then
+	if ! ip -N rule show | grep -q "^$RULE_PRIORITY:"; then
 		ip rule add priority "$RULE_PRIORITY" fwmark "$mark" lookup "$table" || return 1
 	fi
 	: > "$RUNDIR/apply.nft"

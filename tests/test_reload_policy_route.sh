@@ -11,6 +11,11 @@ run_case() (
 	requested_mark=$2
 	requested_table=$3
 	existing_rule=$4
+	displayed_rule=$existing_rule
+	case "$1" in
+		named_main) displayed_rule='10066: from all fwmark 0x66 lookup main' ;;
+		named_custom) displayed_rule='10066: from all fwmark 0x66 lookup hy2route' ;;
+	esac
 	enabled=${5:-1}
 	config_value() {
 		case "$1" in
@@ -21,7 +26,8 @@ run_case() (
 	}
 	ip() {
 		case "$*" in
-			'rule show') printf '%s\n' "$existing_rule" ;;
+			'rule show') printf '%s\n' "$displayed_rule" ;;
+			'-N rule show') printf '%s\n' "$existing_rule" ;;
 			*) echo "ip $*" >> "$events" ;;
 		esac
 	}
@@ -43,7 +49,7 @@ run_case() (
 			# Stop before filesystem/procd work; only exercise the preparation path.
 			ip() {
 				case "$*" in
-					'rule show') printf '%s\n' "$existing_rule" ;;
+					'rule show'|'-N rule show') printf '%s\n' "$existing_rule" ;;
 					*) echo "ip $*" >> "$events"; return 1 ;;
 				esac
 			}
@@ -98,4 +104,6 @@ run_case absent 102 166 ''
 run_case disabled 104 167 "$rule" 0
 run_case prepared_reload 102 166 "$rule"
 run_case normal_start 102 166 "$rule"
+run_case named_main 102 254 '10066: from all fwmark 0x66 lookup 254'
+run_case named_custom 102 166 "$rule"
 echo 'reload policy-route preflight passed'
