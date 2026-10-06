@@ -155,3 +155,12 @@ OpenWrt `Block-LAN-QUIC-UDP443` forwarding rule can reject those packets even
 when router-originated HY2 works. Place a narrow LAN-to-WAN UDP/443 allow rule
 for the configured relay addresses before that QUIC rule. Keep this distinct
 from transparent application UDP, which is handled by the core.
+
+For proxy TLS connections, `main.tcp_domain_dial=1` sends the sniffed SNI and
+original port to the landing for resolution. The default is disabled. This
+changes the connection destination, not the ClientHello or application bytes.
+Direct routes, explicit IP rules, absent/incomplete SNI and ECH retain the
+original IP. HTTP Host and UDP targets are not rewritten. It can help when
+client-selected IPs are unreachable from the landing, but is unsuitable for
+connections that require a fixed destination IP. It does not retry or replay
+an application request after TLS failure.

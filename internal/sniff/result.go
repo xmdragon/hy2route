@@ -11,6 +11,7 @@ type Result struct {
 	Domain   string
 	Protocol string
 	Complete bool
+	ECH      bool
 }
 
 type parseState uint8

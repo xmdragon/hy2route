@@ -104,3 +104,23 @@ func buildClientHello(host string) []byte {
 	handshake := append([]byte{1, byte(len(body) >> 16), byte(len(body) >> 8), byte(len(body))}, body...)
 	return append([]byte{22, 3, 3, byte(len(handshake) >> 8), byte(len(handshake))}, handshake...)
 }
+
+func TestTLSECHAfterSNIIsDetected(t *testing.T) {
+	raw := buildClientHello("www.example.com")
+	raw = append(raw, 0xfe, 0x0d, 0, 0)
+	recordLen := len(raw) - 5
+	raw[3] = byte(recordLen >> 8)
+	raw[4] = byte(recordLen)
+	hsLen := len(raw) - 9
+	raw[6] = byte(hsLen >> 16)
+	raw[7] = byte(hsLen >> 8)
+	raw[8] = byte(hsLen)
+	extLen := int(raw[50])<<8 | int(raw[51])
+	extLen += 4
+	raw[50] = byte(extLen >> 8)
+	raw[51] = byte(extLen)
+	result := Parse(raw)
+	if !result.Complete || !result.ECH || result.Domain != "www.example.com" {
+		t.Fatalf("result=%+v", result)
+	}
+}
