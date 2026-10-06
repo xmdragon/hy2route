@@ -10,4 +10,5 @@ grep -Fq 'PKG_VERSION:=0.2.0' Makefile
 grep -Fq '$(INSTALL_BIN) ./build/hy2route-core $(1)/usr/bin/hy2route-core' Makefile
 grep -Fq '$(INSTALL_DATA) ./build/hy2route-data.bin $(1)/usr/share/hy2route/routing.bin' Makefile
 ! grep -F 'DEPENDS:=' Makefile | grep -Eq 'xray|chinadns'
+grep -Fq 'go build -tags with_utls' tools/build-core.sh
 echo 'core binary contract passed'

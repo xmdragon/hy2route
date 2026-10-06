@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,8 @@ type Config struct {
 	DomesticDNS   string         `json:"domestic_dns"`
 	TrustedDNS    string         `json:"trusted_dns"`
 	HY2           HY2Config      `json:"hy2"`
+	TCPRelay      TCPRelayConfig `json:"tcp_relay"`
+	UDPPolicy     string         `json:"udp_policy,omitempty"`
 	Landing       LandingConfig  `json:"landing"`
 	Limits        LimitsConfig   `json:"limits"`
 	Health        HealthConfig   `json:"health"`
@@ -56,6 +59,17 @@ type HY2Config struct {
 	InitialConnectionWindow uint64   `json:"initial_connection_window"`
 	MaxConnectionWindow     uint64   `json:"max_connection_window"`
 	MaxConcurrentDials      int      `json:"max_concurrent_dials"`
+}
+
+type TCPRelayConfig struct {
+	Enabled     bool   `json:"enabled"`
+	Server      string `json:"server"`
+	UUID        string `json:"uuid"`
+	ServerName  string `json:"server_name"`
+	PublicKey   string `json:"public_key"`
+	ShortID     string `json:"short_id"`
+	Fingerprint string `json:"fingerprint"`
+	Flow        string `json:"flow"`
 }
 
 type LandingConfig struct {
@@ -136,6 +150,15 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateHY2(); err != nil {
 		return err
+	}
+	if err := c.validateTCPRelay(); err != nil {
+		return err
+	}
+	if c.UDPPolicy == "" {
+		c.UDPPolicy = "proxy"
+	}
+	if c.UDPPolicy != "proxy" && c.UDPPolicy != "direct" && c.UDPPolicy != "block" {
+		return errors.New("udp_policy must be proxy, direct, or block")
 	}
 	if err := c.validateLanding(); err != nil {
 		return err
@@ -241,6 +264,47 @@ func (c *Config) validateHY2() error {
 	if c.HY2.InitialStreamWindow == 0 || c.HY2.MaxStreamWindow == 0 || c.HY2.InitialConnectionWindow == 0 || c.HY2.MaxConnectionWindow == 0 ||
 		c.HY2.InitialStreamWindow > c.HY2.MaxStreamWindow || c.HY2.InitialConnectionWindow > c.HY2.MaxConnectionWindow {
 		return errors.New("hy2 windows are invalid")
+	}
+	return nil
+}
+
+func (c *Config) validateTCPRelay() error {
+	r := &c.TCPRelay
+	if !r.Enabled {
+		return nil
+	}
+	if err := validateHostPort("tcp_relay.server", r.Server); err != nil {
+		return err
+	}
+	if !regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString(r.UUID) {
+		return errors.New("tcp_relay uuid must be a UUID")
+	}
+	if !validDNSName(r.ServerName) {
+		return errors.New("tcp_relay server_name must be a DNS name")
+	}
+	key, err := base64.RawURLEncoding.DecodeString(r.PublicKey)
+	if err != nil || len(key) != 32 {
+		return errors.New("tcp_relay public_key must be a base64url X25519 public key")
+	}
+	if len(r.ShortID) > 16 {
+		return errors.New("tcp_relay short_id must be at most 16 hex characters")
+	}
+	if _, err := hex.DecodeString(r.ShortID); err != nil {
+		return errors.New("tcp_relay short_id must contain pairs of hex characters")
+	}
+	if r.Fingerprint == "" {
+		r.Fingerprint = "chrome"
+	}
+	switch r.Fingerprint {
+	case "chrome", "firefox", "safari", "ios", "android", "edge", "random", "randomized":
+	default:
+		return errors.New("tcp_relay fingerprint is unsupported")
+	}
+	if r.Flow == "" {
+		r.Flow = "xtls-rprx-vision"
+	}
+	if r.Flow != "xtls-rprx-vision" && r.Flow != "xtls-rprx-vision-udp443" {
+		return errors.New("tcp_relay flow must be xtls-rprx-vision or xtls-rprx-vision-udp443")
 	}
 	return nil
 }

@@ -169,3 +169,31 @@ func TestLoadReadsAndValidatesFile(t *testing.T) {
 		t.Fatalf("loaded config = %#v", cfg)
 	}
 }
+
+func TestValidateRealityRelay(t *testing.T) {
+	for _, field := range []string{"valid", "uuid", "public_key", "short_id", "server_name", "flow"} {
+		t.Run(field, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.TCPRelay = TCPRelayConfig{Enabled: true, Server: "192.0.2.1:443", UUID: "00000000-0000-0000-0000-000000000001", ServerName: "example.com", PublicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", ShortID: "1234"}
+			switch field {
+			case "uuid":
+				cfg.TCPRelay.UUID = "bad"
+			case "public_key":
+				cfg.TCPRelay.PublicKey = "bad"
+			case "short_id":
+				cfg.TCPRelay.ShortID = "1"
+			case "server_name":
+				cfg.TCPRelay.ServerName = "bad name"
+			case "flow":
+				cfg.TCPRelay.Flow = "unknown"
+			}
+			err := cfg.Validate()
+			if field == "valid" && err != nil {
+				t.Fatal(err)
+			}
+			if field != "valid" && err == nil {
+				t.Fatal("invalid Reality config accepted")
+			}
+		})
+	}
+}

@@ -15,6 +15,8 @@ import (
 const maxRequestBytes = 4096
 
 type Snapshot struct {
+	TCPTransport       string `json:"tcp_transport,omitempty"`
+	UDPTransport       string `json:"udp_transport,omitempty"`
 	Mode               string `json:"mode"`
 	HY2Connected       bool   `json:"hy2_connected"`
 	HY2State           string `json:"hy2_state"`

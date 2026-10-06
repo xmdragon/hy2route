@@ -1,166 +1,145 @@
 # hy2route
 
-`hy2route` is a deliberately small OpenWrt service for this split topology:
+A small OpenWrt transparent proxy with protocol-specific relay paths:
 
 ```text
-TCP (default): LAN client -> HY2 relay -> SOCKS5 or HTTP landing -> Internet
-TCP (optional): LAN client -> VLESS Reality relay -> SOCKS5 or HTTP landing -> Internet
-UDP: LAN client -> HY2 relay -> Internet
-DNS (smart): dnsmasq -> ChinaDNS-NG
-  mainland candidate -> bootstrap DNS directly
-  trusted candidate  -> Xray DNS inbound -> remote DNS through relay
+TCP: LAN -> VLESS Reality relay -> SOCKS5/HTTP landing -> Internet
+     fallback: LAN -> HY2 relay -> the same landing -> Internet
+UDP: LAN -> HY2 relay -> Internet
+     fallback: LAN -> VLESS Reality (XUDP) relay -> Internet
+DNS: domestic DNS directly; trusted DNS over the relay, without the landing
 ```
 
-Mainland China IPv4 destinations bypass Xray in nftables. Other destinations
-are transparently proxied. Explicit IP and domain rules can force either path.
-Proxied TCP exits from the landing, while proxied UDP exits from the HY2 relay.
+The optional `tcp_relay` is disabled by default. Without it, TCP continues to
+use HY2 followed by the landing. UDP always skips the landing: a SOCKS5 proxy
+that accepts TCP does not necessarily support UDP ASSOCIATE, and HTTP CONNECT
+landings carry TCP only. TCP and UDP may therefore have different public exit
+IPs. For sites requiring a single landing IP, disable HTTP/3 in the client or
+add an explicit QUIC restriction for that site's traffic; no global QUIC block
+is installed by this package.
 
-## Design goals
+## Routing and DNS
 
-- One Xray proxy core plus a lightweight POSIX shell supervisor.
-- China IP bypass happens in the kernel before traffic reaches Xray.
-- Atomic configuration validation before traffic rules are installed.
-- `procd` supervises Xray and restarts it after crashes.
-- `procd` also supervises ChinaDNS-NG when smart DNS is enabled.
-- The package is disabled by default and refuses to start while Passwall2 is
-  running.
-- When the optional VLESS TCP relay is enabled, proxied TCP and remote DNS use
-  VLESS Reality to reach the relay while ordinary UDP continues through HY2.
-  This keeps long-lived TCP sessions independent from the HY2/QUIC path without
-  changing their configured SOCKS5 or HTTP landing exit.
-- Smart DNS sends its trusted query over TCP to Xray's DNS inbound, so the
-  query can use HY2 or the optional VLESS relay without depending on landing
-  proxy DNS support. The direct candidate always uses `bootstrap_dns`.
-- Smart DNS startup fails closed if ChinaDNS-NG is missing or cannot open its
-  generated configuration; hy2route never silently selects a different DNS
-  path.
-- LAN IPv6 forwarding is blocked by default so an unproxied IPv6 route cannot
-  bypass the IPv4 policy. Router-local IPv6 services remain reachable.
-- HY2 uses BBR and allows idle QUIC connections to close by default. The
-  package raises the UDP socket buffer ceiling to 4 MiB without changing the
-  default allocation for unrelated sockets.
-- Xray runs with `GOMEMLIMIT=80MiB`. The supervisor samples RSS every 30
-  seconds and restarts Xray after 3 consecutive samples above 110 MiB.
-- End-to-end health checks use two independent HTTP 204 targets. Three rounds
-  in which both targets fail may restart Xray once. Further health-triggered
-  restarts remain suppressed until the 15-minute cooldown has elapsed and the
-  chain has completed 3 consecutive successful rounds.
+Private addresses, the relay and landing endpoints bypass interception.
+Explicit proxy rules win over explicit direct rules, followed by mainland
+China IP/domain rules, then the default proxy path. DNS learns the same domain
+policy into nftables sets. LAN IPv6 forwarding is blocked by default until a
+matching IPv6 proxy policy is configured.
 
-`allow_insecure` is available only for migrating HY2 servers that do not have
-a verifiable certificate. Leave it disabled when possible; a configured
-`pinned_cert_sha256` takes precedence.
+`udp_policy=proxy` uses the UDP relay path; `direct` uses the local network;
+`block` rejects proxied UDP. Existing domestic/explicit direct routes remain
+in effect for all three policies.
 
-## Supervisor recovery policy
+Trusted DNS uses TCP through Reality (HY2 as backup) when `tcp_relay` is
+enabled. It never depends on UDP support or DNS handling at the landing.
+Domestic DNS continues to use `bootstrap_dns` directly.
 
-The supervisor keeps three failure classes separate:
+## Failover
 
-1. If Xray exits, the supervisor returns its status and procd applies the
-   configured crash-respawn policy.
-2. If Xray RSS exceeds 110 MiB for 3 consecutive 30-second samples, the
-   supervisor restarts the child to avoid the router's previously observed
-   out-of-memory failure.
-3. If both end-to-end health targets fail for 3 consecutive rounds, the
-   supervisor performs one health recovery restart for that outage. It does
-   not rearm until the 15-minute cooldown has elapsed and the chain has passed
-   3 consecutive health rounds, so a persistent relay, landing, or Internet
-   outage cannot cause periodic Xray restarts.
+Relay failures apply a cooldown to new connections; the primary is retried
+when that cooldown ends. TCP fallback changes the relay transport while
+preserving the landing destination and credentials. It does not replay bytes
+from an established TCP connection, so interrupted connections must reconnect.
+UDP can retry a failed send on the backup; failed receive sessions are removed
+so subsequent datagrams can create a new session. Normal session expiry does
+not mark the relay unhealthy.
 
-Health recovery is deliberately weaker than crash and memory recovery because
-an end-to-end timeout does not prove that the local Xray process is unhealthy.
+Set `main.fail_open=0` to keep proxied traffic on the two configured relays.
+When both fail, requests fail instead of using local direct egress. The default
+`fail_open=1` retains the earlier local fallback behavior for compatibility.
+TCP and UDP relay cooldowns are independent, so a HY2 outage does not disable
+a working Reality TCP path.
 
-## Protocol split
+Datagram loss without a reported transport error is not proof of a failed
+relay. The core does not automatically change paths for individual lost
+packets; use the UDP probe to verify actual round trips when diagnosing a
+partially broken relay.
 
-The landing proxy carries TCP only. TCP reaches it through HY2 by default, or
-through the optional VLESS Reality relay when `tcp_relay.enabled=1`. Remote DNS
-also uses the VLESS relay in hybrid mode. `udp_policy=proxy` sends ordinary UDP
-through HY2 without involving the SOCKS5 or HTTP landing, so it does not depend
-on SOCKS5 UDP ASSOCIATE support. `udp_policy=direct` bypasses the proxy for UDP,
-and `udp_policy=block` drops non-bypassed UDP.
+## Configure
 
-The VLESS section is optional so an upgraded release 11 configuration remains
-valid and keeps its original HY2-only transport until the operator explicitly
-enables the new relay.
+Use LuCI **Services → hy2route**, or edit `/etc/config/hy2route`:
 
-## Smart DNS
+- `relay`: HY2 server, port, authentication and certificate SNI.
+- `tcp_relay`: optional VLESS Reality server, UUID (`id`), server name,
+  X25519 public key (`reality_password`), short ID, fingerprint and Vision flow.
+- `landing`: SOCKS5 or HTTP server and credentials.
+- `main`: UDP policy, DNS, bypass marks, resource limits and fail-open behavior.
+- `rule`: explicit direct/proxy IPv4 CIDR or domain rules.
 
-`smart_dns=1` is the default. dnsmasq sends ordinary queries to the local
-ChinaDNS-NG listener. ChinaDNS-NG queries `bootstrap_dns` directly and sends a
-second trusted query over TCP to Xray's DNS inbound, which targets
-`remote_dns`. For domains without an explicit rule, it accepts the direct
-answer only when its A records are in hy2route's `china4` nftables set;
-otherwise it returns the trusted answer. This keeps DNS-based CDN selection
-aligned with the destination-IP routing decision.
-
-Explicit direct domains still use `bootstrap_dns` and populate
-`force_direct4`. Explicit proxy domains still populate `force_proxy4`, which
-is evaluated before `china4`. Smart mode filters AAAA answers because this
-release routes forwarded clients by IPv4 and blocks LAN IPv6 forwarding by
-default.
-
-Set `smart_dns=0` to restore release 12 DNS behavior. This is an explicit
-compatibility option, not an automatic fallback.
-
-## Rule precedence
-
-1. Relay, landing and private addresses are always direct.
-2. Explicit proxy IP/domain rules.
-3. Explicit direct IP/domain rules.
-4. Mainland China IPv4 addresses are direct.
-5. Everything else uses the protocol split: TCP uses the landing chain over
-   VLESS when enabled (otherwise HY2); UDP follows `udp_policy` (`proxy` uses
-   the HY2 relay, `direct` bypasses it, and `block` drops it).
-
-Proxy wins when the same value appears in both explicit actions. Domain rules
-are also installed as dnsmasq nft sets, so they do not depend on TLS sniffing.
-
-Latency-sensitive UDP services may perform poorly when the HY2 relay is far
-from their STUN/TURN infrastructure. Add explicit direct IP/CIDR rules for the
-service's documented UDP ranges when low latency matters; other UDP traffic
-continues to follow `udp_policy`.
-
-## LuCI configuration
-
-The package installs a native LuCI form at **Services > HY2Route**. It exposes
-the service policy, smart DNS, HY2 relay, SOCKS/HTTP landing, advanced ports
-and an add/remove/sort table for explicit IP, CIDR and domain routing rules.
-Password fields are masked in the browser. Saving and applying the form
-commits the UCI configuration and triggers a service reload.
-
-## Build
-
-Copy this directory into `package/hy2route` in an OpenWrt 23.05 SDK matching the
-router target, refresh the China snapshot, then build the package:
-
-```sh
-python3 tools/update_china4.py
-make package/hy2route/compile V=s
-```
-
-GitHub Actions refreshes the APNIC mainland China IPv4 snapshot, builds the
-package with the verified OpenWrt 23.05.0 `mediatek/filogic` SDK and publishes
-the `.ipk` as a workflow artifact. It runs for changes, manual requests and a
-weekly schedule.
-
-The target router used during development is `mediatek/filogic`, ARM64,
-OpenWrt 23.05.0.
-
-Smart mode requires `/usr/bin/chinadns-ng` with the tested 2025.08.09 command
-interface. The binary comes from a third-party OpenWrt feed and is not vendored
-or declared as an unresolved dependency in this package's stock SDK build.
-`hy2route check` reports an error when smart mode is enabled and the executable
-is unavailable.
-
-## Configure and test
-
-Edit `/etc/config/hy2route`, then run:
+Keep `allow_insecure=0` for a relay with a verifiable certificate. Node secrets
+belong in the router's root-readable configuration, not source control.
 
 ```sh
 hy2route check
 /etc/init.d/hy2route enable
 /etc/init.d/hy2route start
 hy2route status
-hy2route test
 ```
 
-Passwall2 must be stopped before `hy2route` starts. The service never stops or
-changes Passwall2 automatically.
+The service refuses to start while Passwall2 is running. Its generated
+configuration is validated before installing firewall rules. `procd`
+supervises one `hy2route-core` process, with `GOMEMLIMIT=64MiB` and `GOGC=50`.
+No external Xray or sing-box daemon is required; Reality TLS and Vision reuse
+upstream sing-box/sing-vmess libraries inside the existing process.
+
+## Probe actual egress
+
+Probes do not start transparent listeners or change firewall rules:
+
+```sh
+hy2route-core probe --network tcp
+hy2route-core probe --network udp
+hy2route-core probe --network tcp --transport reality
+hy2route-core probe --network tcp --transport hy2
+hy2route-core probe --network udp --transport hy2 --target 8.8.8.8:53
+hy2route-core probe --network udp --transport reality
+```
+
+TCP probes request `https://api.ipify.org` through the landing; `--url` can
+select another HTTP(S) target. UDP probes query `example.com` through the relay,
+validate the DNS transaction ID and response code, and report the answers.
+`--config` accepts a staged configuration for checks before a cutover or fault
+injection. `status` reports the last selected `tcp_transport` and
+`udp_transport`, plus the existing HY2 connection diagnostics.
+
+## Build and test
+
+Go 1.25.12 and an OpenWrt 23.05 SDK targeting `mediatek/filogic` are used.
+Reality requires the `with_utls` build tag, included by `tools/build-core.sh`.
+
+```sh
+go test -race -tags with_utls ./...
+tools/build-core.sh
+for test in tests/test_*contract.sh; do sh "$test" || exit; done
+```
+
+Copy the repository into `package/hy2route` in the matching OpenWrt SDK, then
+run `make package/hy2route/compile V=s`. The package contains the statically
+linked ARM64 core, routing data, configuration generator, service and LuCI UI.
+
+`third_party/hysteria-core` pins HY2 core v2.10.0 with a single QUIC Datagram
+negotiation compatibility patch. See its `HY2ROUTE-PATCH.md` for upstream
+provenance, the reproduction and the cross-implementation test requirement.
+
+## Deployment
+
+Back up the router configuration and installed artifacts before switching.
+First probe a staged config with both transports. Verify TCP exits from the
+landing and UDP works through each relay. Inject unavailable relay addresses
+only into staged configs to check both fallback paths and the both-down case.
+
+For a migration, switch HY2 to the new relay first, then enable `tcp_relay`.
+Verify DNS, domestic bypass, explicit direct rules, IPv6 policy, resource usage
+and actual client traffic after each step. Roll back configuration and core
+together if verification fails. Retain the backup on the router.
+
+## Windows clients
+
+When the router owns proxy routing, a separate Windows TUN client can override
+it. `tools/configure-windows-router.ps1` runs in administrator PowerShell,
+backs up adapter metrics, default routes, DNS and the selected v2rayN config,
+disables that application's TUN mode, and prefers the router's adapter.
+Specify `-InterfaceIndex` when multiple adapters use the same router gateway.
+`-V2rayConfig` is optional and must identify the active installation; other VPN
+applications are not stopped. Wi-Fi remains available as a lower-priority
+connection. The script prints the backup directory for rollback.

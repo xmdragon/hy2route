@@ -20,6 +20,9 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "probe" {
+		return runProbe(args[1:], stdout, stderr)
+	}
 	if len(args) == 1 && args[0] == "version" {
 		fmt.Fprintln(stdout, buildinfo.String())
 		return 0
@@ -82,6 +85,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	fmt.Fprintln(stderr, "usage: hy2route-core <version|check|status|serve>")
+	fmt.Fprintln(stderr, "usage: hy2route-core <version|check|status|probe|serve>")
 	return 2
 }

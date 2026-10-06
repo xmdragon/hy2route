@@ -21,6 +21,7 @@ import (
 	"github.com/xmdragon/hy2route/internal/sniff"
 	"github.com/xmdragon/hy2route/internal/transport"
 	"github.com/xmdragon/hy2route/internal/transport/hy2"
+	"github.com/xmdragon/hy2route/internal/transport/reality"
 )
 
 type application struct {
@@ -33,6 +34,9 @@ type application struct {
 	controller  *failover.Controller
 	hy2Status   *hy2StatusTracker
 	learned     *policy.LearningTable
+	tcpRelay    *transport.RelayFallback
+	udpRelay    *transport.PacketRelayFallback
+	hy2Client   *hy2.Client
 	dnsOnly     bool
 }
 
@@ -63,11 +67,28 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 		Successes: cfg.Health.SuccessThreshold,
 		Cooldown:  cfg.Health.Cooldown.Value(),
 	}, nil)
-	trustedRoute := transport.NewFailOpenWithProbe(hy2Client, direct, controller, nil, cfg.Health.ProbeInterval.Value())
-	trusted := transport.NewDNSFallback(
-		transport.NewDNSOverStream(trustedRoute, cfg.TrustedDNS, 2*time.Second),
-		domestic,
-	)
+	var trustedRoute transport.StreamDialer = hy2Client
+	var udpRoute transport.PacketDialer = hy2Client
+	var tcpRelay *transport.RelayFallback
+	var udpRelay *transport.PacketRelayFallback
+	if cfg.TCPRelay.Enabled {
+		realityClient, err := reality.New(cfg.TCPRelay, cfg.Firewall.BypassMark)
+		if err != nil {
+			hy2Client.Close()
+			return nil, fmt.Errorf("build Reality transport: %w", err)
+		}
+		tcpRelay = transport.NewRelayFallback(realityClient, hy2Client, "reality", "hy2", cfg.Health.Cooldown.Value())
+		udpRelay = transport.NewPacketRelayFallback(hy2Client, realityClient, cfg.Health.Cooldown.Value())
+		trustedRoute, udpRoute = tcpRelay, udpRelay
+	}
+	if cfg.FailOpen {
+		trustedRoute = transport.NewFailOpenWithProbe(trustedRoute, direct, controller, nil, cfg.Health.ProbeInterval.Value())
+		udpRoute = transport.NewFailOpenPacket(udpRoute, directPacket, controller, nil)
+	}
+	var trusted transport.DNSExchanger = transport.NewDNSOverStream(trustedRoute, cfg.TrustedDNS, 5*time.Second)
+	if cfg.FailOpen {
+		trusted = transport.NewDNSFallback(trusted, domestic)
+	}
 	resolver := dnsproxy.NewResolver(
 		classifier,
 		domestic,
@@ -76,13 +97,19 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 		cfg.Limits.DNSCacheEntries,
 		3*time.Second,
 	)
-	app := &application{dns: dnsproxy.NewServer(cfg.Listen.DNS, resolver), sets: sets, controlPath: cfg.ControlSocket, controller: controller, hy2Status: hy2Status, learned: learner, dnsOnly: dnsOnly}
+	app := &application{dns: dnsproxy.NewServer(cfg.Listen.DNS, resolver), sets: sets, controlPath: cfg.ControlSocket, controller: controller, hy2Status: hy2Status, learned: learner, dnsOnly: dnsOnly, tcpRelay: tcpRelay, udpRelay: udpRelay, hy2Client: hy2Client}
 	if !dnsOnly {
 		tcpProxy, err := landing.New(cfg.Landing, trustedRoute)
 		if err != nil {
 			return nil, fmt.Errorf("build landing transport: %w", err)
 		}
-		udpProxy := transport.NewFailOpenPacket(hy2Client, directPacket, controller, nil)
+		udpProxy := udpRoute
+		if cfg.UDPPolicy == "direct" {
+			udpProxy = directPacket
+		}
+		if cfg.UDPPolicy == "block" {
+			udpProxy = transport.BlockPacketDialer{}
+		}
 		app.tcp = &dataplane.TCPServer{ListenAddr: cfg.Listen.TCP, Classifier: classifier, Learned: learner, Direct: direct, Proxy: tcpProxy, Sniff: dataplaneSniff(cfg), MaxActive: cfg.Limits.TCPSessions}
 		app.udp = &dataplane.UDPServer{ListenAddr: cfg.Listen.UDP, Classifier: classifier, Learned: learner, Direct: directPacket, Proxy: udpProxy, Sessions: dataplane.NewSessionTable(cfg.Limits.UDPSessions, cfg.Limits.UDPIdle.Value())}
 	}
@@ -90,6 +117,7 @@ func newApplication(cfg config.Config, dnsOnly bool) (*application, error) {
 }
 
 func (application *application) Run(ctx context.Context) error {
+	defer application.hy2Client.Close()
 	if application.dnsOnly {
 		return application.dns.Run(ctx)
 	}
@@ -149,7 +177,15 @@ func (application *application) snapshot() control.Snapshot {
 	if application.learned != nil {
 		learned = len(application.learned.Snapshot(time.Now()))
 	}
+	tcpTransport, udpTransport := "hy2", "hy2"
+	if application.tcpRelay != nil {
+		tcpTransport = application.tcpRelay.Active()
+	}
+	if application.udpRelay != nil {
+		udpTransport = application.udpRelay.Active()
+	}
 	return control.Snapshot{
+		TCPTransport: tcpTransport, UDPTransport: udpTransport,
 		Mode:               mode,
 		HY2Connected:       hy2Status.Connected,
 		HY2State:           hy2Status.State,

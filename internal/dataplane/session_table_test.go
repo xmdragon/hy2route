@@ -44,3 +44,19 @@ func TestSessionTableExpiresIdleEntries(t *testing.T) {
 type testSession struct{ closed atomic.Bool }
 
 func (s *testSession) Close() error { s.closed.Store(true); return nil }
+
+func TestRemovingFailedSessionPreservesReplacement(t *testing.T) {
+	table := newSessionTable(2, time.Minute, nil)
+	key := sessionKey{Source: netip.MustParseAddrPort("192.168.80.20:40000"), Target: netip.MustParseAddrPort("1.1.1.1:53")}
+	old, next := &testSession{}, &testSession{}
+	table.add(key, old)
+	table.add(key, next)
+	table.remove(key, old)
+	if table.get(key) != next || next.closed.Load() {
+		t.Fatal("old receiver removed replacement")
+	}
+	table.remove(key, next)
+	if table.len() != 0 || !next.closed.Load() {
+		t.Fatal("failed session remained cached")
+	}
+}

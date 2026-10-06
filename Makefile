@@ -2,8 +2,8 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hy2route
 PKG_VERSION:=0.2.0
-PKG_RELEASE:=4
-PKG_LICENSE:=MIT
+PKG_RELEASE:=5
+PKG_LICENSE:=MIT GPL-3.0-or-later
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -61,6 +61,8 @@ define Package/hy2route/install
 	$(INSTALL_DIR) $(1)/usr/libexec/hy2route
 	$(INSTALL_BIN) ./files/usr/libexec/hy2route/generate.uc $(1)/usr/libexec/hy2route/generate.uc
 	$(INSTALL_DIR) $(1)/usr/share/hy2route
+	$(INSTALL_DIR) $(1)/usr/share/hy2route/licenses
+	$(INSTALL_DATA) ./files/usr/share/hy2route/licenses/* $(1)/usr/share/hy2route/licenses/
 	$(INSTALL_DATA) ./build/hy2route-data.bin $(1)/usr/share/hy2route/routing.bin
 	$(INSTALL_DATA) ./files/usr/share/hy2route/china4.nft $(1)/usr/share/hy2route/china4.nft
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d

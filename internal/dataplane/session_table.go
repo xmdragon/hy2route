@@ -107,3 +107,12 @@ func (table *sessionTable) len() int {
 	defer table.mu.Unlock()
 	return len(table.entries)
 }
+
+// remove only the failed generation; an old receiver must not delete a replacement.
+func (table *sessionTable) remove(key sessionKey, expected sessionCloser) {
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	if entry := table.entries[key]; entry != nil && entry.session == expected {
+		table.removeLocked(entry)
+	}
+}

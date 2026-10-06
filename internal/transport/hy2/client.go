@@ -98,17 +98,35 @@ func (client *Client) Dial(ctx context.Context, target string) (net.Conn, error)
 }
 
 func (client *Client) OpenPacket(ctx context.Context) (transport.PacketSession, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
+	select {
+	case client.sem <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	packet, sequence, err := client.core.UDP()
-	if err != nil {
-		if isTransportFailure(err) {
-			client.events.Emit(transport.Event{Stage: "hy2.udp", Reason: err.Error(), Sequence: sequence})
+	type result struct {
+		packet   coreclient.HyUDPConn
+		sequence uint64
+		err      error
+	}
+	results := make(chan result, 1)
+	go func() { packet, sequence, err := client.core.UDP(); results <- result{packet, sequence, err} }()
+	select {
+	case r := <-results:
+		<-client.sem
+		if r.err != nil && isTransportFailure(r.err) {
+			client.events.Emit(transport.Event{Stage: "hy2.udp", Reason: r.err.Error(), Sequence: r.sequence})
 		}
-		return nil, err
+		return r.packet, r.err
+	case <-ctx.Done():
+		go func() {
+			r := <-results
+			if r.packet != nil {
+				r.packet.Close()
+			}
+			<-client.sem
+		}()
+		return nil, ctx.Err()
 	}
-	return packet, nil
 }
 
 func (client *Client) Close() error { return client.core.Close() }

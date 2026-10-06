@@ -509,7 +509,13 @@ function emit_core() {
 		limits: { dns_cache_entries: number(main.dns_cache_entries, 4096, 64, 65536, 'dns_cache_entries'), learned_ip_entries: number(main.learned_ip_entries, 16384, 64, 131072, 'learned_ip_entries'), tcp_sessions: number(main.tcp_sessions, 256, 64, 4096, 'tcp_sessions'), udp_sessions: number(main.udp_sessions, 2048, 64, 65536, 'udp_sessions'), udp_idle: '60s', sniff_bytes: number(main.sniff_bytes, 8192, 1024, 16384, 'sniff_bytes'), sniff_timeout: '250ms' },
 		health: { failure_threshold: 2, success_threshold: 2, cooldown: '30s', probe_interval: '10s' },
 		firewall: { table: text(main.nft_table, 'hy2route'), lan_interface: lan_interface, mark: fwmark, bypass_mark: bypass_mark, route_table: number(main.route_table, 166, 1, 2147483647, 'route_table'), canary_source: canary_source },
-		rules: rules, data: { routing: '/usr/share/hy2route/routing.bin' }, control_socket: '/var/run/hy2route-core.sock', log_level: log_level == 'warning' ? 'warn' : log_level, fail_open: true
+		rules: rules, data: { routing: '/usr/share/hy2route/routing.bin' }, control_socket: '/var/run/hy2route-core.sock', log_level: log_level == 'warning' ? 'warn' : log_level, fail_open: boolean(main.fail_open, true), udp_policy: udp_policy
+	};
+	if (tcp_relay_enabled) output.tcp_relay = {
+		enabled: true, server: tcp_relay_server + ':' + text(tcp_relay.port, '443'),
+		uuid: text(tcp_relay.id, ''), server_name: text(tcp_relay.server_name, ''),
+		public_key: text(tcp_relay.reality_password, ''), short_id: text(tcp_relay.short_id, ''),
+		fingerprint: text(tcp_relay.fingerprint, 'chrome'), flow: text(tcp_relay.flow, 'xtls-rprx-vision')
 	};
 	print(sprintf('%J\n', output));
 }

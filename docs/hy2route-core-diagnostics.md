@@ -46,3 +46,22 @@ router this returned direct DNS answers for Google even while the core and
 the HY2 trusted DNS path returned working answers. Removing this extra
 default upstream and restarting dnsmasq clears the affected cache and keeps
 normal DNS requests within the core's routing policy.
+
+## Hybrid relay paths (0.2.0-5)
+
+`tcp_transport` and `udp_transport` report the last selected relay path.
+Reality-enabled TCP prefers Reality, and UDP prefers HY2. A failed relay
+enters a cooldown; a working backup does not change TCP's SOCKS/HTTP landing.
+UDP uses HY2 or Reality XUDP without the landing. Transport selection applies
+to new connections; an existing TCP connection must reconnect after failure.
+
+Use `hy2route-core probe --network tcp|udp --transport auto|reality|hy2` to
+exercise the configured path, or `--config` for a staged configuration.
+TCP verifies a real HTTP request through the landing. UDP verifies a complete
+DNS round trip rather than relying on `UDPEnabled` during HY2 authentication.
+Keep credentials in the configuration file; probe arguments contain no secrets.
+
+With `main.fail_open=0`, both relays being unavailable fails proxied requests
+instead of selecting the local network as a third path. Domestic and explicit
+direct rules remain direct. `udp_policy=direct|block` is now also honored by
+the custom core.

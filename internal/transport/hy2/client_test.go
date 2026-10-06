@@ -185,3 +185,40 @@ func testHY2Config() config.HY2Config {
 		MaxConcurrentDials:      2,
 	}
 }
+
+type delayedPacketCore struct {
+	fakeCoreClient
+	started, release chan struct{}
+}
+
+func (c *delayedPacketCore) UDP() (coreclient.HyUDPConn, uint64, error) {
+	close(c.started)
+	<-c.release
+	return &fakeUDP{}, 1, nil
+}
+func TestOpenPacketHonorsCanceledHandshake(t *testing.T) {
+	core := &delayedPacketCore{started: make(chan struct{}), release: make(chan struct{})}
+	adapter := newWithCoreClient(core, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { _, err := adapter.OpenPacket(ctx); done <- err }()
+	<-core.started
+	cancel()
+	select {
+	case err := <-done:
+		if err != context.Canceled {
+			t.Fatal(err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		close(core.release)
+		t.Fatal("UDP handshake ignored cancellation")
+	}
+	close(core.release)
+	// Cancellation must eventually release the bounded handshake slot.
+	select {
+	case adapter.sem <- struct{}{}:
+		<-adapter.sem
+	case <-time.After(time.Second):
+		t.Fatal("UDP handshake slot leaked")
+	}
+}

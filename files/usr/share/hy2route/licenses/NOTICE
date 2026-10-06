@@ -1,0 +1,10 @@
+The hy2route source authored in this repository retains its MIT license.
+The combined hy2route-core binary also includes GPL-3.0-or-later components:
+
+- github.com/sagernet/sing-box v1.12.12 (Reality TLS)
+- github.com/sagernet/sing-vmess v0.2.7 (VLESS / Vision / XUDP)
+
+Their copyright notices and the GPL version 3 text are included here.
+The corresponding hy2route source and pinned module versions are available at
+https://github.com/xmdragon/hy2route, including the build instructions and
+third_party/hysteria-core (MIT) interoperability patch.

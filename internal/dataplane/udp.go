@@ -67,13 +67,13 @@ func (server *UDPServer) Run(ctx context.Context) error {
 		if source == nil || target == nil {
 			continue
 		}
-		sourceAddr, ok1 := netip.AddrFromSlice(source.IP)
-		targetAddr, ok2 := netip.AddrFromSlice(target.IP)
-		if !ok1 || !ok2 || !sourceAddr.Is4() || !targetAddr.Is4() {
+		sourceAddr, ok1 := ipv4UDPEndpoint(source)
+		targetAddr, ok2 := ipv4UDPEndpoint(target)
+		if !ok1 || !ok2 {
 			continue
 		}
 		payload := append([]byte(nil), buffer[:n]...)
-		if err := server.handlePacket(ctx, netip.AddrPortFrom(sourceAddr, uint16(source.Port)), netip.AddrPortFrom(targetAddr, uint16(target.Port)), payload); err != nil && ctx.Err() != nil {
+		if err := server.handlePacket(ctx, sourceAddr, targetAddr, payload); err != nil && ctx.Err() != nil {
 			return nil
 		}
 	}
@@ -89,7 +89,11 @@ func (server *UDPServer) handleFirst(ctx context.Context, source, target netip.A
 	}
 	key := sessionKey{Source: source, Target: target}
 	if existing := server.Sessions.get(key); existing != nil {
-		return existing.(interface{ Send([]byte, string) error }).Send(payload, target.String())
+		err := existing.(interface{ Send([]byte, string) error }).Send(payload, target.String())
+		if err != nil {
+			server.Sessions.remove(key, existing)
+		}
+		return err
 	}
 	dialer := server.Proxy
 	if server.shouldDirect(target.Addr()) {
@@ -109,7 +113,11 @@ func (server *UDPServer) handleFirst(ctx context.Context, source, target netip.A
 func (server *UDPServer) handlePacket(ctx context.Context, source, target netip.AddrPort, payload []byte) error {
 	key := sessionKey{Source: source, Target: target}
 	if existing := server.Sessions.get(key); existing != nil {
-		return existing.(interface{ Send([]byte, string) error }).Send(payload, target.String())
+		err := existing.(interface{ Send([]byte, string) error }).Send(payload, target.String())
+		if err != nil {
+			server.Sessions.remove(key, existing)
+		}
+		return err
 	}
 	if server.Direct == nil || server.Proxy == nil {
 		return errors.New("UDP server is not configured")
@@ -129,11 +137,16 @@ func (server *UDPServer) handlePacket(ctx context.Context, source, target netip.
 	}
 	session := &udpSession{packet: packet, reply: reply}
 	server.Sessions.add(key, session)
-	go server.forwardUDPReply(ctx, session)
-	return session.Send(payload, target.String())
+	go server.forwardUDPReply(ctx, key, session)
+	err = session.Send(payload, target.String())
+	if err != nil {
+		server.Sessions.remove(key, session)
+	}
+	return err
 }
 
-func (server *UDPServer) forwardUDPReply(ctx context.Context, session *udpSession) {
+func (server *UDPServer) forwardUDPReply(ctx context.Context, key sessionKey, session *udpSession) {
+	defer server.Sessions.remove(key, session)
 	for {
 		payload, _, err := session.packet.Receive()
 		if err != nil {
@@ -165,4 +178,16 @@ func (server *UDPServer) shouldDirect(target netip.Addr) bool {
 		}
 	}
 	return server.Classifier != nil && server.Classifier.IP(target).Action == policy.Direct
+}
+
+func ipv4UDPEndpoint(addr *net.UDPAddr) (netip.AddrPort, bool) {
+	if addr == nil || addr.Port < 1 || addr.Port > 65535 {
+		return netip.AddrPort{}, false
+	}
+	ip, ok := netip.AddrFromSlice(addr.IP)
+	ip = ip.Unmap()
+	if !ok || !ip.Is4() {
+		return netip.AddrPort{}, false
+	}
+	return netip.AddrPortFrom(ip, uint16(addr.Port)), true
 }

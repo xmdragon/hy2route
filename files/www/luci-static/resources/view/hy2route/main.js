@@ -47,6 +47,10 @@ return view.extend({
 		o.rmempty = false;
 		o.default = o.disabled;
 
+		o = s.taboption('general', form.Flag, 'fail_open', _('允许故障时本地直连'),
+			_('关闭后，两条中转都失败时不会改用本地出口。协议间回退仍然生效。'));
+		o.default = o.enabled;
+
 		o = s.taboption('general', form.ListValue, 'udp_policy', _('UDP 策略'),
 			_('代理 UDP 直接从 HY2 中转出站，不经过 SOCKS/HTTP 落地。'));
 		o.value('proxy', _('代理'));
@@ -170,7 +174,7 @@ return view.extend({
 		s = m.section(form.NamedSection, 'tcp_relay', 'vless', _('VLESS TCP 中转'));
 
 		o = s.option(form.Flag, 'enabled', _('启用 TCP 中转'),
-			_('仅将代理 TCP 和远程 DNS 改走 VLESS Reality；普通 UDP 仍直接从 HY2 中转出站。'));
+			_('TCP 和远程 DNS 优先使用 Reality，失败时回退 HY2；UDP 优先使用 HY2，失败时回退 Reality。UDP 始终跳过落地。'));
 		o.default = o.disabled;
 
 		o = s.option(form.Value, 'server', _('服务器'));
