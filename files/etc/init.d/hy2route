@@ -19,12 +19,13 @@ remove_network_rules() {
 }
 restore_dnsmasq() { rm -f "$DNSMASQ_SNIPPET"; /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true; }
 check_policy_route() {
-	existing="$(ip rule show | grep "^$RULE_PRIORITY:" || true)"
+	existing="$(ip rule show | awk -v priority="$RULE_PRIORITY:" '$1 == priority { $1=$1; print }')"
 	[ -n "$existing" ] || return 0
 	mark_hex="$(printf '0x%x' "$(config_value fwmark)")"
 	table="$(config_value route_table)"
-	case "$existing " in
-		*"fwmark $mark_hex lookup $table "*) return 0 ;;
+	# Only reuse our complete rule; additional selectors change its behavior.
+	case "$existing" in
+		"$RULE_PRIORITY: from all fwmark $mark_hex lookup $table") return 0 ;;
 		*) logger -t hy2route 'policy route changed; restart required'; return 1 ;;
 	esac
 }

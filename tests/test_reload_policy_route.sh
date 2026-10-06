@@ -57,7 +57,7 @@ run_case() (
 			test "$(grep -c validated "$events")" = 1
 			grep -q '^ip route replace ' "$events"
 			;;
-		changed_mark|changed_table)
+		changed_mark|changed_table|different_selector)
 			if reload_service; then echo 'incompatible reload accepted' >&2; exit 1; fi
 			! grep -Eq 'stopped|started|^ip ' "$events"
 			grep -q diagnostic "$events"
@@ -85,8 +85,15 @@ rule='10066: from all fwmark 0x66 lookup 166'
 run_case changed_mark 104 166 "$rule"
 run_case changed_table 102 167 "$rule"
 run_case changed_table 102 16 "$rule"
+run_case different_selector 102 166 '10066: not from all fwmark 0x66 lookup 166'
+run_case different_selector 102 166 '10066: from 192.168.88.0/24 fwmark 0x66 lookup 166'
+run_case different_selector 102 166 '10066: from all iif br-lan fwmark 0x66 lookup 166'
+run_case different_selector 102 166 '10066: from all fwmark 0x66/0xff lookup 166'
+run_case different_selector 102 166 "$rule
+$rule"
 run_case start_mismatch 102 167 "$rule"
 run_case matching 102 166 "$rule"
+run_case matching 102 166 "$(printf '10066:\tfrom  all fwmark 0x66 lookup 166')"
 run_case absent 102 166 ''
 run_case disabled 104 167 "$rule" 0
 run_case prepared_reload 102 166 "$rule"
