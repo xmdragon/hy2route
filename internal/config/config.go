@@ -28,6 +28,7 @@ type Config struct {
 	TrustedDNS    string         `json:"trusted_dns"`
 	HY2           HY2Config      `json:"hy2"`
 	TCPRelay      TCPRelayConfig `json:"tcp_relay"`
+	TCPDomainDial bool           `json:"tcp_domain_dial,omitempty"`
 	UDPPolicy     string         `json:"udp_policy,omitempty"`
 	Landing       LandingConfig  `json:"landing"`
 	Limits        LimitsConfig   `json:"limits"`

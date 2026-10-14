@@ -51,6 +51,11 @@ return view.extend({
 			_('关闭后，两条中转都失败时不会改用本地出口。协议间回退仍然生效。'));
 		o.default = o.enabled;
 
+		o = s.taboption('advanced', form.Flag, 'tcp_domain_dial', _('代理 TLS 按域名连接'),
+			_('使用 TLS SNI 交给落地解析。直连、显式 IP 规则、无 SNI 或 ECH 连接保留原目标 IP。'));
+		o.default = o.disabled;
+		o.rmempty = false;
+
 		o = s.taboption('general', form.ListValue, 'udp_policy', _('UDP 策略'),
 			_('代理 UDP 优先经 HY2；可在落地设置中启用 SOCKS5 UDP 出站。'));
 		o.value('proxy', _('代理'));

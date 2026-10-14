@@ -343,3 +343,65 @@ func buildClientHello(host string) []byte {
 	handshake := append([]byte{1, byte(len(body) >> 16), byte(len(body) >> 8), byte(len(body))}, body...)
 	return append([]byte{22, 3, 3, byte(len(handshake) >> 8), byte(len(handshake))}, handshake...)
 }
+
+func TestTCPDomainDialPolicy(t *testing.T) {
+	ip := netip.MustParseAddr("203.0.113.8")
+	c, err := policy.New(dataset.Data{Domains: []dataset.Domain{{Name: "wechat.com"}}}, []config.RuleConfig{{Type: "ip", Action: "proxy", Value: "203.0.113.9/32"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		enabled bool
+		ip      netip.Addr
+		r       sniff.Result
+		want    string
+	}{
+		{"enabled", true, ip, sniff.Result{Protocol: "tls", Complete: true, Domain: "www.googleapis.com"}, "www.googleapis.com:8443"},
+		{"default", false, ip, sniff.Result{Protocol: "tls", Complete: true, Domain: "www.googleapis.com"}, "203.0.113.8:8443"},
+		{"direct", true, ip, sniff.Result{Protocol: "tls", Complete: true, Domain: "wechat.com"}, "203.0.113.8:8443"},
+		{"explicit-ip", true, netip.MustParseAddr("203.0.113.9"), sniff.Result{Protocol: "tls", Complete: true, Domain: "www.googleapis.com"}, "203.0.113.8:8443"},
+		{"http", true, ip, sniff.Result{Protocol: "http", Complete: true, Domain: "www.googleapis.com"}, "203.0.113.8:8443"},
+		{"ech", true, ip, sniff.Result{Protocol: "tls", Complete: true, Domain: "www.googleapis.com", ECH: true}, "203.0.113.8:8443"},
+		{"incomplete", true, ip, sniff.Result{Protocol: "tls", Domain: "www.googleapis.com"}, "203.0.113.8:8443"},
+		{"no-sni", true, ip, sniff.Result{Protocol: "tls", Complete: true}, "203.0.113.8:8443"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := TCPServer{DomainDial: tc.enabled, Classifier: c}
+			if got := s.dialTarget("203.0.113.8:8443", tc.ip, tc.r); got != tc.want {
+				t.Fatalf("target=%s want=%s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTCPDomainDialReplaysClientHelloUnchanged(t *testing.T) {
+	client, inbound := net.Pipe()
+	defer client.Close()
+	direct, proxy := newRecordingDialer(), newRecordingDialer()
+	server := newTCPServerForTest(t, testClassifier(t), nil, direct, proxy)
+	server.DomainDial = true
+	done := make(chan error, 1)
+	go func() {
+		done <- server.handle(context.Background(), wrapAddrConn(inbound, "192.168.88.131:50000", "203.0.113.8:443"))
+	}()
+	hello := buildClientHello("www.googleapis.com")
+	go func() { _, _ = client.Write(hello) }()
+	conn := proxy.wait(t)
+	if conn.target != "www.googleapis.com:443" {
+		t.Fatal(conn.target)
+	}
+	if got := readExactly(t, conn.peer, len(hello)); !bytes.Equal(got, hello) {
+		t.Fatal("ClientHello changed")
+	}
+	_ = client.Close()
+	_ = conn.peer.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("handler did not stop")
+	}
+}

@@ -52,6 +52,8 @@ func parseTLS(raw []byte) (Result, parseState) {
 		return Result{}, parseInvalid
 	}
 	extensions := body[pos : pos+extensionsLength]
+	result := Result{Protocol: "tls", Complete: true}
+	seenSNI := false
 	for pos := 0; pos < len(extensions); {
 		if pos+4 > len(extensions) {
 			return Result{}, parseInvalid
@@ -63,14 +65,22 @@ func parseTLS(raw []byte) (Result, parseState) {
 			return Result{}, parseInvalid
 		}
 		if typeID == 0 {
-			if domain := parseServerName(extensions[pos : pos+length]); domain != "" {
-				return Result{Domain: domain, Protocol: "tls", Complete: true}, parseComplete
+			if seenSNI {
+				return Result{}, parseInvalid
 			}
-			return Result{Protocol: "tls", Complete: true}, parseComplete
+			seenSNI = true
+			result.Domain = parseServerName(extensions[pos : pos+length])
+			if result.Domain == "" {
+				return Result{}, parseInvalid
+			}
 		}
+		if typeID == 0xfe0d {
+			result.ECH = true
+		}
+
 		pos += length
 	}
-	return Result{Protocol: "tls", Complete: true}, parseComplete
+	return result, parseComplete
 }
 
 func skipVector(raw []byte, pos, width int) (int, bool) {

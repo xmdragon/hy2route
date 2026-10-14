@@ -26,6 +26,7 @@ type TCPServer struct {
 	Proxy      transport.StreamDialer
 	Sniff      sniff.Limits
 	MaxActive  int
+	DomainDial bool
 }
 
 func (server *TCPServer) Run(ctx context.Context) error {
@@ -86,12 +87,30 @@ func (server *TCPServer) handle(ctx context.Context, inbound net.Conn) error {
 		return err
 	}
 	dialer := server.selectDialer(targetIP, result.Domain)
-	outbound, err := dialer.Dial(ctx, target)
+	dialTarget := server.dialTarget(target, targetIP, result)
+	if dialTarget != target {
+		log.Printf("stage=tcp-target original=%s target=%s basis=tls-sni", target, dialTarget)
+	}
+	outbound, err := dialer.Dial(ctx, dialTarget)
 	if err != nil {
 		return err
 	}
 	defer outbound.Close()
 	return relayFrom(inbound, reader, outbound)
+}
+
+func (server *TCPServer) dialTarget(original string, ip netip.Addr, result sniff.Result) string {
+	if !server.DomainDial || result.Protocol != "tls" || !result.Complete || result.Domain == "" || result.ECH || net.ParseIP(result.Domain) != nil {
+		return original
+	}
+	if server.Classifier.IP(ip).Source == policy.SourceExplicitIP || server.Classifier.Domain(result.Domain).Action != policy.Proxy {
+		return original
+	}
+	_, port, err := net.SplitHostPort(original)
+	if err != nil {
+		return original
+	}
+	return net.JoinHostPort(result.Domain, port)
 }
 
 func (server *TCPServer) selectDialer(target netip.Addr, domain string) transport.StreamDialer {
